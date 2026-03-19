@@ -1,6 +1,8 @@
 package com.example.approbot.ui.waiting;
 
 import android.os.Bundle;
+import android.widget.Button;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -22,5 +24,17 @@ public class WaitingSessionActivity extends AppCompatActivity {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+
+        Button backButton = findViewById(R.id.backButton);
+        backButton.setOnClickListener(v -> onBackPressed());
+
+        // Mostrar perfil seleccionado
+        String perfil = getIntent().getStringExtra("selectedProfile");
+        TextView profileSelectedText = findViewById(R.id.profileSelectedText);
+        if (perfil != null && !perfil.isEmpty()) {
+            profileSelectedText.setText("Perfil seleccionado: " + perfil);
+        } else {
+            profileSelectedText.setText("Perfil seleccionado: -");
+        }
     }
 }

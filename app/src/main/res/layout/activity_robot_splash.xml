@@ -8,9 +8,13 @@
     tools:context=".ui.splash.RobotSplashActivity">
 
     <TextView
+        android:id="@+id/tap_to_continue_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
+        android:text="@string/tap_to_continue"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/black"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

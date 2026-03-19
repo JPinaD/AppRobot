@@ -22,5 +22,12 @@ public class RobotSplashActivity extends AppCompatActivity {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+
+        // Detectar toque en toda la pantalla
+        findViewById(R.id.main).setOnClickListener(v -> {
+            // Redirigir a ProfileSelectionActivity
+            startActivity(new android.content.Intent(this, com.example.approbot.ui.profile.ProfileSelectionActivity.class));
+            finish();
+        });
     }
 }
