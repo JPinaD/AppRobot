@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">AppRobot</string>
+    <string name="back_text">Volver</string>
+    <string name="back_content_desc">Volver a la pantalla anterior</string>
 </resources>
