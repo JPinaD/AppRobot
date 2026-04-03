@@ -2,4 +2,6 @@
     <string name="app_name">AppRobot</string>
     <string name="back_text">Volver</string>
     <string name="back_content_desc">Volver a la pantalla anterior</string>
+    <string name="network_status_waiting">Esperando conexión del terapeuta…</string>
+    <string name="network_status_connected">Terapeuta conectado</string>
 </resources>
