@@ -7,6 +7,8 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.approbot.R;
+import com.example.approbot.data.model.RobotIdentity;
+import com.example.approbot.data.repository.RobotIdentityRepository;
 import com.example.approbot.network.NsdAdvertiser;
 import com.example.approbot.network.TcpServer;
 import com.example.approbot.util.AppConstants;
@@ -16,14 +18,17 @@ public class WaitingSessionActivity extends AppCompatActivity {
     private NsdAdvertiser nsdAdvertiser;
     private TcpServer tcpServer;
     private TextView tvNetworkStatus;
+    private RobotIdentity robotIdentity;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_waiting_session);
 
+        robotIdentity = new RobotIdentityRepository(this).getOrCreate("Robot-1");
+
         nsdAdvertiser = new NsdAdvertiser(this);
-        tcpServer = new TcpServer(AppConstants.NSD_DEFAULT_PORT, (message, out) -> {
+        tcpServer = new TcpServer(robotIdentity.port, (message, out) -> {
             if (AppConstants.MSG_PING.equals(message)) {
                 out.println(AppConstants.MSG_PONG);
             }
@@ -47,7 +52,7 @@ public class WaitingSessionActivity extends AppCompatActivity {
         super.onStart();
         tvNetworkStatus.setText(getString(R.string.network_status_waiting));
         tcpServer.start();
-        nsdAdvertiser.start("Robot-1", AppConstants.NSD_DEFAULT_PORT);
+        nsdAdvertiser.start(robotIdentity);
     }
 
     @Override
