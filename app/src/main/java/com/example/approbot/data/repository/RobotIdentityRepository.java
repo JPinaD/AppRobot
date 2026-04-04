@@ -8,8 +8,6 @@ import com.example.approbot.util.AppConstants;
 /**
  * Persiste la identidad del robot (nombre, puerto, MAC del HC-05) en SharedPreferences.
  */
-import java.util.UUID;
-
 public class RobotIdentityRepository {
 
     private static final String PREFS_NAME = "robot_identity";
