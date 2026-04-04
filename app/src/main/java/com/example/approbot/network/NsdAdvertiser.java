@@ -5,6 +5,7 @@ import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.util.Log;
 
+import com.example.approbot.data.model.RobotIdentity;
 import com.example.approbot.util.AppConstants;
 
 public class NsdAdvertiser {
@@ -19,13 +20,14 @@ public class NsdAdvertiser {
         nsdManager = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
     }
 
-    public void start(String robotName, int port) {
+    public void start(RobotIdentity identity) {
         if (registered) return;
 
         NsdServiceInfo serviceInfo = new NsdServiceInfo();
-        serviceInfo.setServiceName(robotName);
+        serviceInfo.setServiceName(identity.name);
         serviceInfo.setServiceType(AppConstants.NSD_SERVICE_TYPE);
-        serviceInfo.setPort(port);
+        serviceInfo.setPort(identity.port);
+        serviceInfo.setAttribute(AppConstants.NSD_ATTR_ROBOT_ID, identity.robotId);
 
         registrationListener = new NsdManager.RegistrationListener() {
             @Override public void onRegistrationFailed(NsdServiceInfo info, int errorCode) {
