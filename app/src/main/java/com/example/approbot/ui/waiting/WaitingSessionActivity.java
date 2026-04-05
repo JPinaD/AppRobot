@@ -21,6 +21,7 @@ import com.example.approbot.bluetooth.BluetoothDeviceSelector;
 import com.example.approbot.bluetooth.BluetoothRobotListener;
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.data.repository.RobotIdentityRepository;
 import com.example.approbot.network.NsdAdvertiser;
 import com.example.approbot.network.SessionNetworkHolder;
@@ -45,7 +46,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     private RobotIdentityRepository identityRepository;
     private BluetoothRobotManager bluetoothRobotManager;
 
-    // Referencia a PictogramActivity activa para enrutar ROBOT_FEEDBACK
     private static PictogramActivity activePictogramActivity;
 
     public static void registerPictogramActivity(PictogramActivity activity) {
@@ -72,13 +72,13 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_waiting_session);
 
-        tvNetworkStatus = findViewById(R.id.tvNetworkStatus);
+        tvNetworkStatus    = findViewById(R.id.tvNetworkStatus);
         identityRepository = new RobotIdentityRepository(this);
 
         int port = identityRepository.getPort();
 
-        nsdAdvertiser = new NsdAdvertiser(this);
-        tcpServer = new TcpServer(port, this::handleTcpMessage);
+        nsdAdvertiser        = new NsdAdvertiser(this);
+        tcpServer            = new TcpServer(port, this::handleTcpMessage);
         bluetoothRobotManager = new BluetoothRobotManager();
         bluetoothRobotManager.setListener(this);
 
@@ -87,7 +87,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         Button backButton = findViewById(R.id.back_button);
         backButton.setOnClickListener(v -> finish());
 
-        TextView tvSelectedProfileName = findViewById(R.id.tvSelectedProfileName);
+        TextView tvSelectedProfileName        = findViewById(R.id.tvSelectedProfileName);
         TextView tvSelectedProfileDescription = findViewById(R.id.tvSelectedProfileDescription);
         tvSelectedProfileName.setText(getIntent().getStringExtra("profile_name"));
         tvSelectedProfileDescription.setText(getIntent().getStringExtra("profile_description"));
@@ -99,7 +99,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         tvNetworkStatus.setText(getString(R.string.network_status_waiting));
 
         String robotName = identityRepository.getRobotName("Robot-1");
-        int port = identityRepository.getPort();
+        int port         = identityRepository.getPort();
 
         tcpServer.start();
         nsdAdvertiser.start(robotName, port);
@@ -130,8 +130,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         }
 
         try {
-            JSONObject obj = new JSONObject(message);
-            String type = obj.getString("type");
+            JSONObject obj  = new JSONObject(message);
+            String type     = obj.getString("type");
             String payloadStr = obj.optString("payload", null);
 
             switch (type) {
@@ -161,13 +161,25 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 Log.w(TAG, "ACTIVITY_START con lista de pictogramas vacía, ignorado");
                 return;
             }
+
             ArrayList<String> pictogramList = new ArrayList<>();
-            for (int i = 0; i < pics.length(); i++) {
-                pictogramList.add(pics.getString(i));
+            for (int i = 0; i < pics.length(); i++) pictogramList.add(pics.getString(i));
+
+            // Extraer perfil del alumno (opcional, retrocompatible)
+            StudentProfile profile = null;
+            JSONObject profileObj = payload.optJSONObject("studentProfile");
+            if (profileObj != null) {
+                profile = StudentProfile.fromJson(profileObj);
             }
+
+            final StudentProfile finalProfile = profile;
             runOnUiThread(() -> {
                 Intent intent = new Intent(this, PictogramActivity.class);
                 intent.putStringArrayListExtra(PictogramActivity.EXTRA_PICTOGRAMS, pictogramList);
+                if (finalProfile != null) {
+                    intent.putExtra(PictogramActivity.EXTRA_STUDENT_PROFILE,
+                            profileObj != null ? profileObj.toString() : null);
+                }
                 startActivity(intent);
             });
         } catch (JSONException e) {
@@ -184,8 +196,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
             PictogramActivity target = activePictogramActivity;
             if (target != null) {
-                target.runOnUiThread(() ->
-                        target.getViewModel().onFeedbackReceived(text));
+                target.runOnUiThread(() -> target.getViewModel().onFeedbackReceived(text));
             } else {
                 Log.w(TAG, "ROBOT_FEEDBACK recibido pero PictogramActivity no está activa");
             }
@@ -196,10 +207,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     // --- BluetoothRobotListener ---
 
-    @Override
-    public void onConnected() {
-        Log.i(TAG, "Conectado al robot físico vía Bluetooth");
-    }
+    @Override public void onConnected() { Log.i(TAG, "Conectado al robot físico vía Bluetooth"); }
 
     @Override
     public void onMessageReceived(RobotMessage message) {
@@ -208,14 +216,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     @Override
     public void onConnectionError(String reason) {
-        runOnUiThread(() ->
-                Toast.makeText(this, "Error Bluetooth: " + reason, Toast.LENGTH_LONG).show());
+        runOnUiThread(() -> Toast.makeText(this, "Error Bluetooth: " + reason, Toast.LENGTH_LONG).show());
     }
 
-    @Override
-    public void onDisconnected() {
-        Log.i(TAG, "Desconectado del robot físico");
-    }
+    @Override public void onDisconnected() { Log.i(TAG, "Desconectado del robot físico"); }
 
     // --- privado ---
 

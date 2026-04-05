@@ -8,33 +8,37 @@ import androidx.lifecycle.ViewModel;
 
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.TcpServer;
+import com.example.approbot.ui.pictogram.ActivityTheme;
 import com.example.approbot.util.AppConstants;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * ViewModel de PictogramActivity. Coordina el envío de PICTOGRAM_SELECTED
- * al terapeuta y SERVO_COMMAND al HC-05, y expone el feedback recibido.
- */
 public class PictogramViewModel extends ViewModel {
 
     private static final String TAG = "PictogramViewModel";
 
     private final MutableLiveData<Boolean> selectionConfirmed = new MutableLiveData<>(false);
-    private final MutableLiveData<String> feedbackText = new MutableLiveData<>();
+    private final MutableLiveData<String>  feedbackText       = new MutableLiveData<>();
+    private final MutableLiveData<Integer> confirmationColor  = new MutableLiveData<>();
 
     private TcpServer tcpServer;
     private BluetoothRobotManager bluetoothManager;
+    private StudentProfile studentProfile;
 
-    public void init(TcpServer tcpServer, BluetoothRobotManager bluetoothManager) {
-        this.tcpServer = tcpServer;
+    public void init(TcpServer tcpServer, BluetoothRobotManager bluetoothManager,
+                     StudentProfile profile) {
+        this.tcpServer        = tcpServer;
         this.bluetoothManager = bluetoothManager;
+        this.studentProfile   = profile;
+        confirmationColor.setValue(ActivityTheme.resolveConfirmationColor(profile));
     }
 
-    public LiveData<Boolean> getSelectionConfirmed() { return selectionConfirmed; }
-    public LiveData<String> getFeedbackText() { return feedbackText; }
+    public LiveData<Boolean>  getSelectionConfirmed() { return selectionConfirmed; }
+    public LiveData<String>   getFeedbackText()        { return feedbackText; }
+    public LiveData<Integer>  getConfirmationColor()   { return confirmationColor; }
 
     public void onPictogramSelected(String pictogramId) {
         selectionConfirmed.postValue(true);
@@ -51,11 +55,9 @@ public class PictogramViewModel extends ViewModel {
         try {
             JSONObject payload = new JSONObject();
             payload.put("pictogramId", pictogramId);
-
             JSONObject msg = new JSONObject();
             msg.put("type", AppConstants.MSG_PICTOGRAM_SELECTED);
             msg.put("payload", payload.toString());
-
             tcpServer.sendToClient(msg.toString());
         } catch (JSONException e) {
             Log.e(TAG, "Error construyendo PICTOGRAM_SELECTED", e);

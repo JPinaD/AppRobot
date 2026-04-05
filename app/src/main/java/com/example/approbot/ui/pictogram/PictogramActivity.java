@@ -11,25 +11,28 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.example.approbot.R;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
 import com.example.approbot.viewmodel.PictogramViewModel;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Muestra los pictogramas al alumno. Recibe la lista de ids desde el Intent.
- * Al pulsar uno, muestra confirmación visual y notifica al ViewModel.
- */
 public class PictogramActivity extends AppCompatActivity {
 
-    public static final String EXTRA_PICTOGRAMS = "pictograms";
+    public static final String EXTRA_PICTOGRAMS    = "pictograms";
+    public static final String EXTRA_STUDENT_PROFILE = "student_profile_json";
 
     private PictogramViewModel viewModel;
     private GridLayout gridPictograms;
     private LinearLayout layoutConfirmation;
     private TextView tvFeedback;
+
+    private final BackgroundSoundPlayer soundPlayer = new BackgroundSoundPlayer();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,8 +43,23 @@ public class PictogramActivity extends AppCompatActivity {
         layoutConfirmation = findViewById(R.id.layoutConfirmation);
         tvFeedback         = findViewById(R.id.tvFeedback);
 
+        // Parsear perfil del alumno (puede ser null)
+        StudentProfile profile = null;
+        String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
+        if (profileJson != null) {
+            try {
+                profile = StudentProfile.fromJson(new JSONObject(profileJson));
+            } catch (JSONException ignored) {}
+        }
+
+        // Iniciar sonido de fondo si aplica
+        if (profile != null && profile.backgroundSoundResName != null) {
+            soundPlayer.play(this, profile.backgroundSoundResName);
+        }
+
         viewModel = new ViewModelProvider(this).get(PictogramViewModel.class);
-        viewModel.init(SessionNetworkHolder.getTcpServer(), SessionNetworkHolder.getBluetoothManager());
+        viewModel.init(SessionNetworkHolder.getTcpServer(),
+                SessionNetworkHolder.getBluetoothManager(), profile);
 
         ArrayList<String> pictograms = getIntent().getStringArrayListExtra(EXTRA_PICTOGRAMS);
         if (pictograms == null || pictograms.isEmpty()) {
@@ -56,6 +74,10 @@ public class PictogramActivity extends AppCompatActivity {
                 gridPictograms.setVisibility(View.GONE);
                 layoutConfirmation.setVisibility(View.VISIBLE);
             }
+        });
+
+        viewModel.getConfirmationColor().observe(this, color -> {
+            if (color != null) layoutConfirmation.setBackgroundColor(color);
         });
 
         viewModel.getFeedbackText().observe(this, text -> {
@@ -78,9 +100,13 @@ public class PictogramActivity extends AppCompatActivity {
         WaitingSessionActivity.unregisterPictogramActivity();
     }
 
-    public PictogramViewModel getViewModel() {
-        return viewModel;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        soundPlayer.stop();
     }
+
+    public PictogramViewModel getViewModel() { return viewModel; }
 
     private void buildGrid(List<String> pictogramIds) {
         for (String id : pictogramIds) {
@@ -111,7 +137,6 @@ public class PictogramActivity extends AppCompatActivity {
     }
 
     private void onPictogramClicked(String pictogramId) {
-        // Deshabilitar todos los botones para evitar doble pulsación (T17)
         for (int i = 0; i < gridPictograms.getChildCount(); i++) {
             gridPictograms.getChildAt(i).setEnabled(false);
         }
