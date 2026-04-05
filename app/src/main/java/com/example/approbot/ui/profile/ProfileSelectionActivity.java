@@ -5,19 +5,15 @@ import android.os.Bundle;
 import android.widget.Button;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.approbot.R;
-import com.example.approbot.data.model.LocalStudentProfile;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
-import com.example.approbot.util.MockRobotDataProvider;
-
-import java.util.List;
+import com.example.approbot.viewmodel.ProfileSelectionViewModel;
 
 public class ProfileSelectionActivity extends AppCompatActivity {
-
-    private RecyclerView rvProfiles;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,28 +23,26 @@ public class ProfileSelectionActivity extends AppCompatActivity {
         Button backButton = findViewById(R.id.back_button);
         backButton.setOnClickListener(v -> {
             if (isTaskRoot()) {
-                Intent intent = new Intent(ProfileSelectionActivity.this, com.example.approbot.ui.splash.RobotSplashActivity.class);
+                Intent intent = new Intent(this, com.example.approbot.ui.splash.RobotSplashActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(intent);
-                finish();
-            } else {
-                finish();
             }
+            finish();
         });
 
-        rvProfiles = findViewById(R.id.rvProfiles);
+        RecyclerView rvProfiles = findViewById(R.id.rvProfiles);
+        rvProfiles.setLayoutManager(new LinearLayoutManager(this));
 
-        List<LocalStudentProfile> profiles = MockRobotDataProvider.getMockProfiles();
-
-        ProfileSelectionAdapter adapter = new ProfileSelectionAdapter(profiles, profile -> {
-            Intent intent = new Intent(ProfileSelectionActivity.this, WaitingSessionActivity.class);
+        ProfileSelectionAdapter adapter = new ProfileSelectionAdapter(profile -> {
+            Intent intent = new Intent(this, WaitingSessionActivity.class);
             intent.putExtra("profile_id", profile.id);
             intent.putExtra("profile_name", profile.name);
             intent.putExtra("profile_description", profile.description);
             startActivity(intent);
         });
-
-        rvProfiles.setLayoutManager(new LinearLayoutManager(this));
         rvProfiles.setAdapter(adapter);
+
+        ProfileSelectionViewModel viewModel = new ViewModelProvider(this).get(ProfileSelectionViewModel.class);
+        viewModel.profiles.observe(this, adapter::setProfiles);
     }
 }

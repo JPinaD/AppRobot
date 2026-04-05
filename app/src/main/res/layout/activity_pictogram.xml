@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F5F5">
+
+    <!-- Grid de pictogramas -->
+    <GridLayout
+        android:id="@+id/gridPictograms"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:columnCount="2"
+        android:rowCount="2"
+        android:padding="24dp"
+        android:alignmentMode="alignMargins"
+        android:useDefaultMargins="true" />
+
+    <!-- Confirmación visual (oculta por defecto) -->
+    <LinearLayout
+        android:id="@+id/layoutConfirmation"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#C8E6C9"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/ivTick"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="@drawable/ic_tick"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/tvFeedback"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:gravity="center"
+            android:padding="16dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+</FrameLayout>

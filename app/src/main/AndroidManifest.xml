@@ -29,6 +29,9 @@
             android:name=".ui.waiting.WaitingSessionActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.pictogram.PictogramActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.sessionend.SessionEndActivity"
             android:exported="false" />
         <activity

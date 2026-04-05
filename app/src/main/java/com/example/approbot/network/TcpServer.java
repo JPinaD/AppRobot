@@ -13,7 +13,7 @@ import java.util.concurrent.Executors;
 
 /**
  * Servidor TCP que escucha conexiones entrantes de AppTerapeuta.
- * Responde PONG a cualquier mensaje PING recibido.
+ * Expone sendToClient() para enviar mensajes proactivos al terapeuta conectado.
  */
 public class TcpServer {
 
@@ -28,6 +28,7 @@ public class TcpServer {
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     private ServerSocket serverSocket;
+    private volatile PrintWriter clientWriter;
     private volatile boolean running = false;
 
     public TcpServer(int port, MessageListener listener) {
@@ -53,6 +54,7 @@ public class TcpServer {
 
     public void stop() {
         running = false;
+        clientWriter = null;
         try {
             if (serverSocket != null) serverSocket.close();
         } catch (IOException e) {
@@ -61,11 +63,22 @@ public class TcpServer {
         executor.shutdownNow();
     }
 
+    /** Envía un mensaje al terapeuta conectado. No hace nada si no hay cliente. */
+    public void sendToClient(String message) {
+        PrintWriter writer = clientWriter;
+        if (writer != null) {
+            executor.execute(() -> writer.println(message));
+        } else {
+            Log.w(TAG, "sendToClient(): no hay cliente conectado");
+        }
+    }
+
     private void handleClient(Socket client) {
         try (
             BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
             PrintWriter out = new PrintWriter(client.getOutputStream(), true)
         ) {
+            clientWriter = out;
             String line;
             while ((line = in.readLine()) != null) {
                 Log.d(TAG, "Recibido: " + line);
@@ -74,6 +87,7 @@ public class TcpServer {
         } catch (IOException e) {
             Log.w(TAG, "Cliente desconectado: " + e.getMessage());
         } finally {
+            clientWriter = null;
             try { client.close(); } catch (IOException ignored) {}
         }
     }

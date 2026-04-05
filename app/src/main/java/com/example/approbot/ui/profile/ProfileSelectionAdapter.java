@@ -9,22 +9,28 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.approbot.R;
-import com.example.approbot.data.model.LocalStudentProfile;
+import com.example.approbot.data.local.entity.LocalProfileEntity;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ProfileSelectionAdapter extends RecyclerView.Adapter<ProfileSelectionAdapter.ProfileViewHolder> {
 
     public interface OnProfileClickListener {
-        void onProfileClick(LocalStudentProfile profile);
+        void onProfileClick(LocalProfileEntity profile);
     }
 
-    private final List<LocalStudentProfile> profiles;
+    private final List<LocalProfileEntity> profiles = new ArrayList<>();
     private final OnProfileClickListener listener;
 
-    public ProfileSelectionAdapter(List<LocalStudentProfile> profiles, OnProfileClickListener listener) {
-        this.profiles = profiles;
+    public ProfileSelectionAdapter(OnProfileClickListener listener) {
         this.listener = listener;
+    }
+
+    public void setProfiles(List<LocalProfileEntity> list) {
+        profiles.clear();
+        if (list != null) profiles.addAll(list);
+        notifyDataSetChanged();
     }
 
     @NonNull
@@ -36,11 +42,9 @@ public class ProfileSelectionAdapter extends RecyclerView.Adapter<ProfileSelecti
 
     @Override
     public void onBindViewHolder(@NonNull ProfileViewHolder holder, int position) {
-        LocalStudentProfile profile = profiles.get(position);
-
+        LocalProfileEntity profile = profiles.get(position);
         holder.tvProfileName.setText(profile.name);
         holder.tvProfileDescription.setText(profile.description);
-
         holder.itemView.setOnClickListener(v -> listener.onProfileClick(profile));
     }
 
@@ -50,12 +54,11 @@ public class ProfileSelectionAdapter extends RecyclerView.Adapter<ProfileSelecti
     }
 
     static class ProfileViewHolder extends RecyclerView.ViewHolder {
-        TextView tvProfileName;
-        TextView tvProfileDescription;
+        TextView tvProfileName, tvProfileDescription;
 
-        public ProfileViewHolder(@NonNull View itemView) {
+        ProfileViewHolder(@NonNull View itemView) {
             super(itemView);
-            tvProfileName = itemView.findViewById(R.id.tvProfileName);
+            tvProfileName        = itemView.findViewById(R.id.tvProfileName);
             tvProfileDescription = itemView.findViewById(R.id.tvProfileDescription);
         }
     }
