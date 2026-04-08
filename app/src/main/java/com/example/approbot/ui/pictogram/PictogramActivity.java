@@ -1,5 +1,9 @@
 package com.example.approbot.ui.pictogram;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.GridLayout;
@@ -9,11 +13,13 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.approbot.R;
 import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
+import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.PictogramViewModel;
 
 import org.json.JSONException;
@@ -24,7 +30,7 @@ import java.util.List;
 
 public class PictogramActivity extends AppCompatActivity {
 
-    public static final String EXTRA_PICTOGRAMS    = "pictograms";
+    public static final String EXTRA_PICTOGRAMS     = "pictograms";
     public static final String EXTRA_STUDENT_PROFILE = "student_profile_json";
 
     private PictogramViewModel viewModel;
@@ -33,6 +39,15 @@ public class PictogramActivity extends AppCompatActivity {
     private TextView tvFeedback;
 
     private final BackgroundSoundPlayer soundPlayer = new BackgroundSoundPlayer();
+
+    private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Si la confirmación visual ya terminó (o no ha empezado), salir inmediatamente.
+            // Si está en curso, el alumno ya vio el feedback; salimos igualmente.
+            finish();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,29 +58,22 @@ public class PictogramActivity extends AppCompatActivity {
         layoutConfirmation = findViewById(R.id.layoutConfirmation);
         tvFeedback         = findViewById(R.id.tvFeedback);
 
-        // Parsear perfil del alumno (puede ser null)
         StudentProfile profile = null;
         String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
         if (profileJson != null) {
-            try {
-                profile = StudentProfile.fromJson(new JSONObject(profileJson));
-            } catch (JSONException ignored) {}
+            try { profile = StudentProfile.fromJson(new JSONObject(profileJson)); }
+            catch (JSONException ignored) {}
         }
 
-        // Iniciar sonido de fondo si aplica
-        if (profile != null && profile.backgroundSoundResName != null) {
+        if (profile != null && profile.backgroundSoundResName != null)
             soundPlayer.play(this, profile.backgroundSoundResName);
-        }
 
         viewModel = new ViewModelProvider(this).get(PictogramViewModel.class);
         viewModel.init(SessionNetworkHolder.getTcpServer(),
                 SessionNetworkHolder.getBluetoothManager(), profile);
 
         ArrayList<String> pictograms = getIntent().getStringArrayListExtra(EXTRA_PICTOGRAMS);
-        if (pictograms == null || pictograms.isEmpty()) {
-            finish();
-            return;
-        }
+        if (pictograms == null || pictograms.isEmpty()) { finish(); return; }
 
         buildGrid(pictograms);
 
@@ -86,6 +94,9 @@ public class PictogramActivity extends AppCompatActivity {
                 tvFeedback.setVisibility(View.VISIBLE);
             }
         });
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
     }
 
     @Override
@@ -104,6 +115,7 @@ public class PictogramActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         soundPlayer.stop();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(sessionEndReceiver);
     }
 
     public PictogramViewModel getViewModel() { return viewModel; }
@@ -123,12 +135,8 @@ public class PictogramActivity extends AppCompatActivity {
             btn.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
             btn.setPadding(16, 16, 16, 16);
 
-            if (resId != 0) {
-                btn.setImageResource(resId);
-                btn.setBackgroundResource(resId);
-            } else {
-                btn.setBackgroundColor(0xFFE0E0E0);
-            }
+            if (resId != 0) { btn.setImageResource(resId); btn.setBackgroundResource(resId); }
+            else btn.setBackgroundColor(0xFFE0E0E0);
 
             btn.setContentDescription(id);
             btn.setOnClickListener(v -> onPictogramClicked(id));
@@ -137,9 +145,8 @@ public class PictogramActivity extends AppCompatActivity {
     }
 
     private void onPictogramClicked(String pictogramId) {
-        for (int i = 0; i < gridPictograms.getChildCount(); i++) {
+        for (int i = 0; i < gridPictograms.getChildCount(); i++)
             gridPictograms.getChildAt(i).setEnabled(false);
-        }
         viewModel.onPictogramSelected(pictogramId);
     }
 }

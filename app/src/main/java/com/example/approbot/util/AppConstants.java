@@ -13,7 +13,16 @@ public class AppConstants {
     public static final String MSG_ROBOT_FEEDBACK     = "ROBOT_FEEDBACK";
     public static final String MSG_SERVO_CONFIRM      = "CONFIRM";
 
+    // Sesiones
+    public static final String MSG_SESSION_START  = "SESSION_START";
+    public static final String MSG_SESSION_END    = "SESSION_END";
+    public static final String MSG_SESSION_READY  = "SESSION_READY";
+    public static final String MSG_SESSION_ENDED  = "SESSION_ENDED";
+
+    // Broadcast local para SESSION_END
+    public static final String ACTION_SESSION_END = "com.example.approbot.ACTION_SESSION_END";
+
     // Bluetooth HC-05
-    public static final String BT_SPP_UUID    = "00001101-0000-1000-8000-00805F9B34FB";
+    public static final String BT_SPP_UUID     = "00001101-0000-1000-8000-00805F9B34FB";
     public static final String BT_PREFS_KEY_MAC = "hc05_mac";
 }
