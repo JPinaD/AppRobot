@@ -53,5 +53,20 @@
         android:textSize="14sp"
         android:text="@string/network_status_waiting" />
 
+    <TextView
+        android:id="@+id/tvBluetoothStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="14sp"
+        android:text="@string/bt_status_connecting" />
+
+    <TextView
+        android:id="@+id/tvBatteryStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textSize="14sp"
+        android:visibility="gone" />
 
 </LinearLayout>

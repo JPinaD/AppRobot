@@ -43,6 +43,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     private NsdAdvertiser nsdAdvertiser;
     private TcpServer tcpServer;
     private TextView tvNetworkStatus;
+    private TextView tvBluetoothStatus;
+    private TextView tvBatteryStatus;
     private RobotIdentityRepository identityRepository;
     private BluetoothRobotManager bluetoothRobotManager;
 
@@ -68,6 +70,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         setContentView(R.layout.activity_waiting_session);
 
         tvNetworkStatus    = findViewById(R.id.tvNetworkStatus);
+        tvBluetoothStatus  = findViewById(R.id.tvBluetoothStatus);
+        tvBatteryStatus    = findViewById(R.id.tvBatteryStatus);
         identityRepository = new RobotIdentityRepository(this);
 
         int port = identityRepository.getPort();
@@ -239,14 +243,56 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     // --- BluetoothRobotListener ---
 
-    @Override public void onConnected() { Log.i(TAG, "Conectado al robot físico vía Bluetooth"); }
-    @Override public void onMessageReceived(RobotMessage m) { Log.d(TAG, "BT: " + m.type); }
-    @Override public void onConnectionError(String r) {
-        runOnUiThread(() -> Toast.makeText(this, "Error Bluetooth: " + r, Toast.LENGTH_LONG).show());
+    @Override
+    public void onConnected() {
+        Log.i(TAG, "Conectado al robot físico vía Bluetooth");
+        runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_connecting)));
+        bluetoothRobotManager.send(new RobotMessage(AppConstants.MSG_PING, null));
     }
-    @Override public void onDisconnected() { Log.i(TAG, "Desconectado del robot físico"); }
+
+    @Override
+    public void onMessageReceived(RobotMessage m) {
+        Log.d(TAG, "BT: " + m.type);
+        switch (m.type) {
+            case AppConstants.MSG_PONG:
+                runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_verified)));
+                break;
+            case AppConstants.MSG_BATTERY_STATUS:
+                handleBatteryStatus(m.payload);
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onConnectionError(String r) {
+        runOnUiThread(() -> {
+            tvBluetoothStatus.setText(getString(R.string.bt_status_error));
+            Toast.makeText(this, "Error Bluetooth: " + r, Toast.LENGTH_LONG).show();
+        });
+    }
+
+    @Override
+    public void onDisconnected() {
+        Log.i(TAG, "Desconectado del robot físico");
+        runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_disconnected)));
+    }
 
     // --- privado ---
+
+    private void handleBatteryStatus(String payload) {
+        if (payload == null) return;
+        try {
+            int level = Integer.parseInt(payload.trim());
+            runOnUiThread(() -> {
+                tvBatteryStatus.setText(getString(R.string.bt_battery_format, level));
+                tvBatteryStatus.setVisibility(android.view.View.VISIBLE);
+            });
+        } catch (NumberFormatException e) {
+            Log.w(TAG, "BATTERY_STATUS con valor no numérico ignorado: " + payload);
+        }
+    }
 
     private void startBluetoothConnection() {
         String mac = identityRepository.getHcMac();

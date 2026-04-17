@@ -4,4 +4,9 @@
     <string name="back_content_desc">Volver a la pantalla anterior</string>
     <string name="network_status_waiting">Esperando conexión del terapeuta…</string>
     <string name="network_status_connected">Terapeuta conectado</string>
+    <string name="bt_status_connecting">BT: Conectando…</string>
+    <string name="bt_status_verified">BT: Verificado</string>
+    <string name="bt_status_disconnected">BT: Desconectado</string>
+    <string name="bt_status_error">BT: Error</string>
+    <string name="bt_battery_format">Batería: %d%%</string>
 </resources>
