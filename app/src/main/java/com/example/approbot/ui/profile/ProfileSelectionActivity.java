@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.approbot.R;
+import com.example.approbot.data.local.entity.LocalProfileEntity;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
 import com.example.approbot.viewmodel.ProfileSelectionViewModel;
 
@@ -33,16 +34,23 @@ public class ProfileSelectionActivity extends AppCompatActivity {
         RecyclerView rvProfiles = findViewById(R.id.rvProfiles);
         rvProfiles.setLayoutManager(new LinearLayoutManager(this));
 
-        ProfileSelectionAdapter adapter = new ProfileSelectionAdapter(profile -> {
-            Intent intent = new Intent(this, WaitingSessionActivity.class);
-            intent.putExtra("profile_id", profile.id);
-            intent.putExtra("profile_name", profile.name);
-            intent.putExtra("profile_description", profile.description);
-            startActivity(intent);
-        });
+        ProfileSelectionAdapter adapter = new ProfileSelectionAdapter(this::onProfileSelected);
         rvProfiles.setAdapter(adapter);
 
         ProfileSelectionViewModel viewModel = new ViewModelProvider(this).get(ProfileSelectionViewModel.class);
-        viewModel.profiles.observe(this, adapter::setProfiles);
+        viewModel.profiles.observe(this, profiles -> {
+            if (profiles != null && profiles.isEmpty()) {
+                viewModel.insertDefaultIfEmpty();
+            }
+            adapter.setProfiles(profiles);
+        });
+    }
+
+    private void onProfileSelected(LocalProfileEntity profile) {
+        Intent intent = new Intent(this, WaitingSessionActivity.class);
+        intent.putExtra("profile_id", profile.id);
+        intent.putExtra("profile_name", profile.name);
+        intent.putExtra("profile_description", profile.description);
+        startActivity(intent);
     }
 }

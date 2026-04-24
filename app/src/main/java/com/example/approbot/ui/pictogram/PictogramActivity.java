@@ -43,8 +43,6 @@ public class PictogramActivity extends AppCompatActivity {
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            // Si la confirmación visual ya terminó (o no ha empezado), salir inmediatamente.
-            // Si está en curso, el alumno ya vio el feedback; salimos igualmente.
             finish();
         }
     };

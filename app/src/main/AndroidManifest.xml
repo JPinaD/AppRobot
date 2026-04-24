@@ -27,7 +27,8 @@
 
         <activity
             android:name=".ui.waiting.WaitingSessionActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity
             android:name=".ui.pictogram.PictogramActivity"
             android:exported="false" />
@@ -55,6 +56,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".network.RobotNetworkService"
+            android:exported="false" />
 
     </application>
 

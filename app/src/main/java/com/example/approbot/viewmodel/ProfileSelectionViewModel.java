@@ -26,6 +26,12 @@ public class ProfileSelectionViewModel extends AndroidViewModel {
         repository.insert(profile);
     }
 
+    public void insertDefaultIfEmpty() {
+        LocalProfileEntity defaultProfile = new LocalProfileEntity(
+                "default", "Alumno", "Perfil por defecto", true, false);
+        repository.insert(defaultProfile);
+    }
+
     public void deleteById(String id) {
         repository.deleteById(id);
     }

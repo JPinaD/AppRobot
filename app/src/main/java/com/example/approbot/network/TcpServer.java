@@ -24,15 +24,20 @@ public class TcpServer {
     private static final String TAG = "TcpServer";
 
     private final int port;
-    private final MessageListener listener;
+    private volatile MessageListener listener;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     private ServerSocket serverSocket;
     private volatile PrintWriter clientWriter;
+    private volatile Socket currentClient;
     private volatile boolean running = false;
 
     public TcpServer(int port, MessageListener listener) {
         this.port = port;
+        this.listener = listener;
+    }
+
+    public void setMessageListener(MessageListener listener) {
         this.listener = listener;
     }
 
@@ -44,6 +49,11 @@ public class TcpServer {
                 Log.d(TAG, "Servidor TCP escuchando en puerto " + port);
                 while (running) {
                     Socket client = serverSocket.accept();
+                    // Cerrar conexión anterior si existe
+                    if (currentClient != null) {
+                        try { currentClient.close(); } catch (IOException ignored) {}
+                    }
+                    currentClient = client;
                     executor.execute(() -> handleClient(client));
                 }
             } catch (IOException e) {

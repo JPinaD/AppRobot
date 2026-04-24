@@ -69,6 +69,6 @@ public class PictogramViewModel extends ViewModel {
             Log.w(TAG, "HC-05 no disponible, omitiendo SERVO_COMMAND");
             return;
         }
-        bluetoothManager.send(new RobotMessage(AppConstants.MSG_SERVO_CONFIRM, null));
+        bluetoothManager.send(new RobotMessage("SERVO_COMMAND", "CONFIRM"));
     }
 }

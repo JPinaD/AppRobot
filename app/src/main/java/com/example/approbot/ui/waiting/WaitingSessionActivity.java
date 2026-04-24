@@ -1,12 +1,14 @@
 package com.example.approbot.ui.waiting;
 
 import android.Manifest;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.util.Log;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,9 +26,8 @@ import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
 import com.example.approbot.data.model.SessionConfig;
 import com.example.approbot.data.repository.RobotIdentityRepository;
-import com.example.approbot.network.NsdAdvertiser;
+import com.example.approbot.network.RobotNetworkService;
 import com.example.approbot.network.SessionNetworkHolder;
-import com.example.approbot.network.TcpServer;
 import com.example.approbot.ui.pictogram.PictogramActivity;
 import com.example.approbot.util.AppConstants;
 
@@ -40,13 +41,14 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private static final String TAG = "WaitingSessionActivity";
 
-    private NsdAdvertiser nsdAdvertiser;
-    private TcpServer tcpServer;
     private TextView tvNetworkStatus;
     private TextView tvBluetoothStatus;
     private TextView tvBatteryStatus;
     private RobotIdentityRepository identityRepository;
     private BluetoothRobotManager bluetoothRobotManager;
+
+    private RobotNetworkService networkService;
+    private boolean serviceBound = false;
 
     private static PictogramActivity activePictogramActivity;
 
@@ -57,6 +59,24 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     public static void unregisterPictogramActivity() {
         activePictogramActivity = null;
     }
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder binder) {
+            Log.d(TAG, "onServiceConnected");
+            networkService = ((RobotNetworkService.LocalBinder) binder).getService();
+            serviceBound = true;
+            String robotName = identityRepository.getRobotName("Robot-1");
+            int port = identityRepository.getPort();
+            networkService.startNetwork(robotName, port,
+                    WaitingSessionActivity.this::handleTcpMessage, bluetoothRobotManager);
+        }
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            Log.d(TAG, "onServiceDisconnected");
+            serviceBound = false;
+        }
+    };
 
     private final ActivityResultLauncher<String> requestBluetoothPermission =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -69,34 +89,36 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_waiting_session);
 
-        tvNetworkStatus    = findViewById(R.id.tvNetworkStatus);
-        tvBluetoothStatus  = findViewById(R.id.tvBluetoothStatus);
-        tvBatteryStatus    = findViewById(R.id.tvBatteryStatus);
+        tvNetworkStatus   = findViewById(R.id.tvNetworkStatus);
+        tvBluetoothStatus = findViewById(R.id.tvBluetoothStatus);
+        tvBatteryStatus   = findViewById(R.id.tvBatteryStatus);
         identityRepository = new RobotIdentityRepository(this);
 
-        int port = identityRepository.getPort();
-        nsdAdvertiser         = new NsdAdvertiser(this);
-        tcpServer             = new TcpServer(port, this::handleTcpMessage);
         bluetoothRobotManager = new BluetoothRobotManager();
         bluetoothRobotManager.setListener(this);
-        SessionNetworkHolder.init(tcpServer, bluetoothRobotManager);
 
-        findViewById(R.id.back_button).setOnClickListener(v -> finish());
+        findViewById(R.id.back_button).setOnClickListener(v -> {
+            bluetoothRobotManager.disconnect();
+            stopService(new Intent(this, RobotNetworkService.class));
+            finish();
+        });
+        ((TextView) findViewById(R.id.tvSelectedProfileName)).setText(
+                getIntent().getStringExtra("profile_name"));
+        ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
+                getIntent().getStringExtra("profile_description"));
 
-        TextView tvName = findViewById(R.id.tvSelectedProfileName);
-        TextView tvDesc = findViewById(R.id.tvSelectedProfileDescription);
-        tvName.setText(getIntent().getStringExtra("profile_name"));
-        tvDesc.setText(getIntent().getStringExtra("profile_description"));
+        // Arrancar y enlazar el servicio de red — solo una vez en onCreate
+        Intent serviceIntent = new Intent(this, RobotNetworkService.class);
+        startService(serviceIntent);
+        boolean bound = bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
         tvNetworkStatus.setText(getString(R.string.network_status_waiting));
-        String robotName = identityRepository.getRobotName("Robot-1");
-        int port         = identityRepository.getPort();
-        tcpServer.start();
-        nsdAdvertiser.start(robotName, port);
+
+        // Bluetooth
         if (hasBluetoothPermission()) startBluetoothConnection();
         else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             requestBluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT);
@@ -105,10 +127,18 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     @Override
     protected void onStop() {
         super.onStop();
-        nsdAdvertiser.stop();
-        tcpServer.stop();
-        bluetoothRobotManager.disconnect();
-        SessionNetworkHolder.clear();
+        // No desconectamos BT aquí — debe seguir activo durante la sesión en PictogramActivity
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (serviceBound) {
+            unbindService(serviceConnection);
+            serviceBound = false;
+        }
+        // Paramos el servicio solo si el usuario sale explícitamente (botón volver)
+        // No lo paramos en recreaciones de configuración
     }
 
     // --- Enrutamiento de mensajes TCP ---
@@ -156,7 +186,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             return;
         }
 
-        // Enviar SESSION_READY
         try {
             JSONObject payload = new JSONObject();
             payload.put("sessionId", config.sessionId);
@@ -169,7 +198,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             Log.e(TAG, "Error construyendo SESSION_READY", e);
         }
 
-        // Navegar a PictogramActivity
         ArrayList<String> pictogramList = new ArrayList<>(config.pictograms);
         String profileJson = config.studentProfile != null
                 ? studentProfileToJson(config.studentProfile) : null;
@@ -188,11 +216,9 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
         } catch (JSONException ignored) {}
 
-        // Broadcast local para que PictogramActivity finalice
         LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_END));
 
-        // Enviar SESSION_ENDED
         try {
             JSONObject payload = new JSONObject();
             payload.put("sessionId", sessionId);
@@ -214,10 +240,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             if (pics == null || pics.length() == 0) return;
             ArrayList<String> list = new ArrayList<>();
             for (int i = 0; i < pics.length(); i++) list.add(pics.getString(i));
-
             JSONObject profileObj = payload.optJSONObject("studentProfile");
             final String profileJson = profileObj != null ? profileObj.toString() : null;
-
             runOnUiThread(() -> {
                 Intent intent = new Intent(this, PictogramActivity.class);
                 intent.putStringArrayListExtra(PictogramActivity.EXTRA_PICTOGRAMS, list);
@@ -296,7 +320,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private void startBluetoothConnection() {
         String mac = identityRepository.getHcMac();
-        if (mac != null) bluetoothRobotManager.connect(mac);
+        if (mac != null) bluetoothRobotManager.connect(this, mac);
         else showBluetoothDeviceSelector();
     }
 
@@ -309,7 +333,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private void showBluetoothDeviceSelector() {
         BluetoothDeviceSelector selector = new BluetoothDeviceSelector();
-        List<BluetoothDeviceSelector.BluetoothDeviceInfo> devices = selector.getPairedDevices();
+        List<BluetoothDeviceSelector.BluetoothDeviceInfo> devices = selector.getPairedDevices(this);
         if (devices.isEmpty()) {
             Toast.makeText(this, "No hay dispositivos Bluetooth emparejados.", Toast.LENGTH_LONG).show();
             return;
@@ -321,7 +345,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 .setTitle("Selecciona el módulo HC-05")
                 .setItems(names, (d, w) -> {
                     identityRepository.saveHcMac(devices.get(w).mac);
-                    bluetoothRobotManager.connect(devices.get(w).mac);
+                    bluetoothRobotManager.connect(WaitingSessionActivity.this, devices.get(w).mac);
                 })
                 .setCancelable(false).show();
     }

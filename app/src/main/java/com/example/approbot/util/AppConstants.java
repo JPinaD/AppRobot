@@ -11,7 +11,7 @@ public class AppConstants {
     public static final String MSG_ACTIVITY_START     = "ACTIVITY_START";
     public static final String MSG_PICTOGRAM_SELECTED = "PICTOGRAM_SELECTED";
     public static final String MSG_ROBOT_FEEDBACK     = "ROBOT_FEEDBACK";
-    public static final String MSG_SERVO_CONFIRM      = "CONFIRM";
+    public static final String MSG_SERVO_COMMAND     = "SERVO_COMMAND";
 
     // Sesiones
     public static final String MSG_SESSION_START  = "SESSION_START";

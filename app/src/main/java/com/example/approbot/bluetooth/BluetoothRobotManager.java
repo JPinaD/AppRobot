@@ -3,7 +3,11 @@ package com.example.approbot.bluetooth;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
+import android.content.pm.PackageManager;
 import android.util.Log;
+
+import androidx.core.content.ContextCompat;
 
 import com.example.approbot.data.model.RobotMessage;
 import com.example.approbot.util.AppConstants;
@@ -34,8 +38,20 @@ public class BluetoothRobotManager {
     }
 
     /** Abre el socket RFCOMM en un hilo de fondo. */
-    public void connect(String macAddress) {
+    public void connect(Context context, String macAddress) {
+        if (macAddress == null) {
+            notifyError("MAC del HC-05 no configurada");
+            return;
+        }
         new Thread(() -> {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                int result = ContextCompat.checkSelfPermission(
+                        context.getApplicationContext(), android.Manifest.permission.BLUETOOTH_CONNECT);
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    notifyError("Permiso Bluetooth no concedido");
+                    return;
+                }
+            }
             BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
             if (adapter == null || !adapter.isEnabled()) {
                 notifyError("Bluetooth no disponible o desactivado");
@@ -43,8 +59,13 @@ public class BluetoothRobotManager {
             }
             BluetoothDevice device = adapter.getRemoteDevice(macAddress);
             try {
-                BluetoothSocket s = device.createRfcommSocketToServiceRecord(SPP_UUID);
-                adapter.cancelDiscovery();
+                BluetoothSocket s;
+                try {
+                    s = device.createRfcommSocketToServiceRecord(SPP_UUID);
+                } catch (IOException | SecurityException e) {
+                    Log.w(TAG, "Socket seguro fallido, intentando inseguro: " + e.getMessage());
+                    s = device.createInsecureRfcommSocketToServiceRecord(SPP_UUID);
+                }
                 s.connect();
                 socket = s;
                 writer = new PrintWriter(s.getOutputStream(), true);
@@ -55,8 +76,8 @@ public class BluetoothRobotManager {
                 Log.e(TAG, "Error al conectar con HC-05", e);
                 notifyError(e.getMessage());
             } catch (SecurityException e) {
-                Log.e(TAG, "Permiso Bluetooth denegado", e);
-                notifyError("Permiso Bluetooth no concedido");
+                Log.e(TAG, "SecurityException al conectar", e);
+                notifyError(e.getMessage());
             }
         }, "bt-connect").start();
     }

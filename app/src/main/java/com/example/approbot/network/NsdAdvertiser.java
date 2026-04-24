@@ -26,6 +26,7 @@ public class NsdAdvertiser {
         serviceInfo.setServiceName(robotName);
         serviceInfo.setServiceType(AppConstants.NSD_SERVICE_TYPE);
         serviceInfo.setPort(port);
+        serviceInfo.setAttribute(AppConstants.NSD_ATTR_ROBOT_ID, robotName);
 
         registrationListener = new NsdManager.RegistrationListener() {
             @Override public void onRegistrationFailed(NsdServiceInfo info, int errorCode) {
