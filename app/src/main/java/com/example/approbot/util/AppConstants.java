@@ -19,8 +19,16 @@ public class AppConstants {
     public static final String MSG_SESSION_READY  = "SESSION_READY";
     public static final String MSG_SESSION_ENDED  = "SESSION_ENDED";
 
+    // Parada de emergencia
+    public static final String MSG_SESSION_PAUSE   = "SESSION_PAUSE";
+    public static final String MSG_SESSION_PAUSED  = "SESSION_PAUSED";
+    public static final String MSG_SESSION_RESUME  = "SESSION_RESUME";
+    public static final String MSG_SESSION_RESUMED = "SESSION_RESUMED";
+
     // Broadcast local para SESSION_END
-    public static final String ACTION_SESSION_END = "com.example.approbot.ACTION_SESSION_END";
+    public static final String ACTION_SESSION_END    = "com.example.approbot.ACTION_SESSION_END";
+    public static final String ACTION_SESSION_PAUSE   = "com.example.approbot.ACTION_SESSION_PAUSE";
+    public static final String ACTION_SESSION_RESUME  = "com.example.approbot.ACTION_SESSION_RESUME";
 
     // Bluetooth HC-05
     public static final String BT_SPP_UUID     = "00001101-0000-1000-8000-00805F9B34FB";

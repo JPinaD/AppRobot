@@ -31,7 +31,7 @@ import java.util.List;
 
 public class PictogramActivity extends AppCompatActivity {
 
-    public static final String EXTRA_PICTOGRAMS     = "pictograms";
+    public static final String EXTRA_PICTOGRAMS      = "pictograms";
     public static final String EXTRA_STUDENT_PROFILE = "student_profile_json";
 
     private PictogramViewModel viewModel;
@@ -43,9 +43,17 @@ public class PictogramActivity extends AppCompatActivity {
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override
-        public void onReceive(Context context, Intent intent) {
-            finish();
-        }
+        public void onReceive(Context context, Intent intent) { finish(); }
+    };
+
+    private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) { showPauseOverlay(); }
+    };
+
+    private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) { hidePauseOverlay(); }
     };
 
     @Override
@@ -76,7 +84,6 @@ public class PictogramActivity extends AppCompatActivity {
 
         viewModel.setTotalPictograms(pictograms.size());
 
-        // Pasar el ViewModel como provider al reporter
         RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
         if (reporter != null) reporter.setStatusProvider(viewModel);
 
@@ -100,8 +107,10 @@ public class PictogramActivity extends AppCompatActivity {
             }
         });
 
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-                sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+        lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        lbm.registerReceiver(pauseReceiver,      new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
+        lbm.registerReceiver(resumeReceiver,     new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
     }
 
     @Override
@@ -121,10 +130,28 @@ public class PictogramActivity extends AppCompatActivity {
         super.onDestroy();
         soundPlayer.stop();
         viewModel.onActivityFinished();
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(sessionEndReceiver);
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+        lbm.unregisterReceiver(sessionEndReceiver);
+        lbm.unregisterReceiver(pauseReceiver);
+        lbm.unregisterReceiver(resumeReceiver);
     }
 
     public PictogramViewModel getViewModel() { return viewModel; }
+
+    private void showPauseOverlay() {
+        if (getSupportFragmentManager().findFragmentByTag(PauseOverlayFragment.TAG) != null) return;
+        getSupportFragmentManager().beginTransaction()
+                .add(android.R.id.content, new PauseOverlayFragment(), PauseOverlayFragment.TAG)
+                .commit();
+    }
+
+    private void hidePauseOverlay() {
+        androidx.fragment.app.Fragment overlay =
+                getSupportFragmentManager().findFragmentByTag(PauseOverlayFragment.TAG);
+        if (overlay != null) {
+            getSupportFragmentManager().beginTransaction().remove(overlay).commit();
+        }
+    }
 
     private void buildGrid(List<String> pictogramIds) {
         for (String id : pictogramIds) {

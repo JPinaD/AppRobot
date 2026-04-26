@@ -171,6 +171,12 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 case AppConstants.MSG_ACTIVITY_START:
                     handleActivityStart(payloadStr);
                     break;
+                case AppConstants.MSG_SESSION_PAUSE:
+                    handleSessionPause(payloadStr, out);
+                    break;
+                case AppConstants.MSG_SESSION_RESUME:
+                    handleSessionResume(payloadStr, out);
+                    break;
                 case AppConstants.MSG_ROBOT_FEEDBACK:
                     handleRobotFeedback(payloadStr);
                     break;
@@ -257,6 +263,53 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             });
         } catch (JSONException e) {
             Log.w(TAG, "Error parseando ACTIVITY_START: " + payloadStr);
+        }
+    }
+
+
+    private void handleSessionPause(String payloadStr, java.io.PrintWriter out) {
+        // Enviar broadcast a PictogramActivity para mostrar overlay
+        LocalBroadcastManager.getInstance(this)
+                .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_PAUSE));
+
+        // Responder SESSION_PAUSED (idempotente aunque no haya actividad activa)
+        String sessionId = "";
+        try {
+            if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
+        } catch (JSONException ignored) {}
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("sessionId", sessionId);
+            payload.put("robotId", identityRepository.getRobotName("Robot-1"));
+            JSONObject msg = new JSONObject();
+            msg.put("type", AppConstants.MSG_SESSION_PAUSED);
+            msg.put("payload", payload.toString());
+            out.println(msg.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error construyendo SESSION_PAUSED", e);
+        }
+    }
+
+    private void handleSessionResume(String payloadStr, java.io.PrintWriter out) {
+        // Enviar broadcast a PictogramActivity para retirar overlay
+        LocalBroadcastManager.getInstance(this)
+                .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_RESUME));
+
+        // Responder SESSION_RESUMED
+        String sessionId = "";
+        try {
+            if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
+        } catch (JSONException ignored) {}
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("sessionId", sessionId);
+            payload.put("robotId", identityRepository.getRobotName("Robot-1"));
+            JSONObject msg = new JSONObject();
+            msg.put("type", AppConstants.MSG_SESSION_RESUMED);
+            msg.put("payload", payload.toString());
+            out.println(msg.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error construyendo SESSION_RESUMED", e);
         }
     }
 
