@@ -32,4 +32,5 @@ public class AppConstants {
     public static final String MSG_STOP           = "STOP";
     public static final String MSG_SENSOR_REQUEST = "SENSOR_REQUEST";
     public static final String MSG_SENSOR_DATA    = "SENSOR_DATA";
+    public static final String MSG_ROBOT_STATUS   = "ROBOT_STATUS";
 }

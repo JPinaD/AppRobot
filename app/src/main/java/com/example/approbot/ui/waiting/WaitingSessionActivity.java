@@ -27,6 +27,7 @@ import com.example.approbot.data.model.RobotMessage;
 import com.example.approbot.data.model.SessionConfig;
 import com.example.approbot.data.repository.RobotIdentityRepository;
 import com.example.approbot.network.RobotNetworkService;
+import com.example.approbot.network.RobotStatusReporter;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.ui.pictogram.PictogramActivity;
 import com.example.approbot.util.AppConstants;
@@ -49,6 +50,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private RobotNetworkService networkService;
     private boolean serviceBound = false;
+    private RobotStatusReporter statusReporter;
 
     private static PictogramActivity activePictogramActivity;
 
@@ -70,6 +72,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             int port = identityRepository.getPort();
             networkService.startNetwork(robotName, port,
                     WaitingSessionActivity.this::handleTcpMessage, bluetoothRobotManager);
+            statusReporter = new RobotStatusReporter(
+                    WaitingSessionActivity.this, networkService.getTcpServer());
+            statusReporter.start();
+            SessionNetworkHolder.setStatusReporter(statusReporter);
         }
         @Override
         public void onServiceDisconnected(ComponentName name) {
@@ -128,6 +134,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     protected void onStop() {
         super.onStop();
         // No desconectamos BT aquí — debe seguir activo durante la sesión en PictogramActivity
+        if (statusReporter != null) statusReporter.stop();
     }
 
     @Override

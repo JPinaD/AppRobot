@@ -17,6 +17,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.approbot.R;
 import com.example.approbot.data.model.StudentProfile;
+import com.example.approbot.network.RobotStatusReporter;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
 import com.example.approbot.util.AppConstants;
@@ -73,6 +74,12 @@ public class PictogramActivity extends AppCompatActivity {
         ArrayList<String> pictograms = getIntent().getStringArrayListExtra(EXTRA_PICTOGRAMS);
         if (pictograms == null || pictograms.isEmpty()) { finish(); return; }
 
+        viewModel.setTotalPictograms(pictograms.size());
+
+        // Pasar el ViewModel como provider al reporter
+        RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
+        if (reporter != null) reporter.setStatusProvider(viewModel);
+
         buildGrid(pictograms);
 
         viewModel.getSelectionConfirmed().observe(this, confirmed -> {
@@ -113,6 +120,7 @@ public class PictogramActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         soundPlayer.stop();
+        viewModel.onActivityFinished();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(sessionEndReceiver);
     }
 
@@ -146,5 +154,7 @@ public class PictogramActivity extends AppCompatActivity {
         for (int i = 0; i < gridPictograms.getChildCount(); i++)
             gridPictograms.getChildAt(i).setEnabled(false);
         viewModel.onPictogramSelected(pictogramId);
+        RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
+        if (reporter != null) reporter.sendImmediate();
     }
 }
