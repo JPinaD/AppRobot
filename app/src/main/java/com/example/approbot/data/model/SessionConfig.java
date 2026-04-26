@@ -23,10 +23,10 @@ public class SessionConfig {
 
     public SessionConfig(String sessionId, String activityId,
                          StudentProfile studentProfile, List<String> pictograms) {
-        this.sessionId     = sessionId;
-        this.activityId    = activityId;
+        this.sessionId      = sessionId;
+        this.activityId     = activityId;
         this.studentProfile = studentProfile;
-        this.pictograms    = pictograms != null ? pictograms : new ArrayList<>();
+        this.pictograms     = pictograms != null ? pictograms : new ArrayList<>();
     }
 
     /** Devuelve null si el JSON es inválido o faltan campos obligatorios. */
@@ -52,22 +52,21 @@ public class SessionConfig {
             return null;
         }
     }
-    }
 
     /** Serializa esta SessionConfig a JSON para persistencia. */
     public String toJson() {
         try {
-            org.json.JSONObject obj = new org.json.JSONObject();
+            JSONObject obj = new JSONObject();
             obj.put("sessionId", sessionId);
             obj.put("activityId", activityId);
-            org.json.JSONArray arr = new org.json.JSONArray();
+            JSONArray arr = new JSONArray();
             for (String p : pictograms) arr.put(p);
             obj.put("pictograms", arr);
             if (studentProfile != null) {
-                org.json.JSONObject profileObj = new org.json.JSONObject();
+                JSONObject profileObj = new JSONObject();
                 profileObj.put("id", studentProfile.id);
                 profileObj.put("name", studentProfile.name);
-                org.json.JSONArray colors = new org.json.JSONArray();
+                JSONArray colors = new JSONArray();
                 for (String c : studentProfile.excludedColors) colors.put(c);
                 profileObj.put("excludedColors", colors);
                 if (studentProfile.backgroundSoundResName != null)
@@ -75,7 +74,7 @@ public class SessionConfig {
                 obj.put("studentProfile", profileObj);
             }
             return obj.toString();
-        } catch (org.json.JSONException e) {
+        } catch (JSONException e) {
             Log.w(TAG, "Error serializando SessionConfig: " + e.getMessage());
             return null;
         }
