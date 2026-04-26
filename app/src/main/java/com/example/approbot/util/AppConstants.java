@@ -1,8 +1,8 @@
 package com.example.approbot.util;
 
 public class AppConstants {
-    public static final String NSD_SERVICE_TYPE = "_approbot._tcp.";
-    public static final int NSD_DEFAULT_PORT = 9000;
+    public static final String NSD_SERVICE_TYPE  = "_approbot._tcp.";
+    public static final int    NSD_DEFAULT_PORT  = 9000;
     public static final String NSD_ATTR_ROBOT_ID = "robotId";
     public static final String MSG_PING = "PING";
     public static final String MSG_PONG = "PONG";
@@ -11,7 +11,7 @@ public class AppConstants {
     public static final String MSG_ACTIVITY_START     = "ACTIVITY_START";
     public static final String MSG_PICTOGRAM_SELECTED = "PICTOGRAM_SELECTED";
     public static final String MSG_ROBOT_FEEDBACK     = "ROBOT_FEEDBACK";
-    public static final String MSG_SERVO_COMMAND     = "SERVO_COMMAND";
+    public static final String MSG_SERVO_COMMAND      = "SERVO_COMMAND";
 
     // Sesiones
     public static final String MSG_SESSION_START  = "SESSION_START";
@@ -19,11 +19,22 @@ public class AppConstants {
     public static final String MSG_SESSION_READY  = "SESSION_READY";
     public static final String MSG_SESSION_ENDED  = "SESSION_ENDED";
 
-    // Broadcast local para SESSION_END
-    public static final String ACTION_SESSION_END = "com.example.approbot.ACTION_SESSION_END";
+    // Parada de emergencia
+    public static final String MSG_SESSION_PAUSE   = "SESSION_PAUSE";
+    public static final String MSG_SESSION_PAUSED  = "SESSION_PAUSED";
+    public static final String MSG_SESSION_RESUME  = "SESSION_RESUME";
+    public static final String MSG_SESSION_RESUMED = "SESSION_RESUMED";
+
+    // Broadcasts locales
+    public static final String ACTION_SESSION_END    = "com.example.approbot.ACTION_SESSION_END";
+    public static final String ACTION_SESSION_PAUSE  = "com.example.approbot.ACTION_SESSION_PAUSE";
+    public static final String ACTION_SESSION_RESUME = "com.example.approbot.ACTION_SESSION_RESUME";
+
+    // Persistencia de sesión activa
+    public static final String PREF_ACTIVE_SESSION = "active_session";
 
     // Bluetooth HC-05
-    public static final String BT_SPP_UUID     = "00001101-0000-1000-8000-00805F9B34FB";
+    public static final String BT_SPP_UUID      = "00001101-0000-1000-8000-00805F9B34FB";
     public static final String BT_PREFS_KEY_MAC = "hc05_mac";
 
     // Mensajes Arduino <-> AppRobot (via BT)

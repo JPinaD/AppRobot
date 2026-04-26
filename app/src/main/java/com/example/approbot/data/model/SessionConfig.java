@@ -52,4 +52,32 @@ public class SessionConfig {
             return null;
         }
     }
+    }
+
+    /** Serializa esta SessionConfig a JSON para persistencia. */
+    public String toJson() {
+        try {
+            org.json.JSONObject obj = new org.json.JSONObject();
+            obj.put("sessionId", sessionId);
+            obj.put("activityId", activityId);
+            org.json.JSONArray arr = new org.json.JSONArray();
+            for (String p : pictograms) arr.put(p);
+            obj.put("pictograms", arr);
+            if (studentProfile != null) {
+                org.json.JSONObject profileObj = new org.json.JSONObject();
+                profileObj.put("id", studentProfile.id);
+                profileObj.put("name", studentProfile.name);
+                org.json.JSONArray colors = new org.json.JSONArray();
+                for (String c : studentProfile.excludedColors) colors.put(c);
+                profileObj.put("excludedColors", colors);
+                if (studentProfile.backgroundSoundResName != null)
+                    profileObj.put("backgroundSoundResName", studentProfile.backgroundSoundResName);
+                obj.put("studentProfile", profileObj);
+            }
+            return obj.toString();
+        } catch (org.json.JSONException e) {
+            Log.w(TAG, "Error serializando SessionConfig: " + e.getMessage());
+            return null;
+        }
+    }
 }

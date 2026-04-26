@@ -25,6 +25,7 @@ import com.example.approbot.bluetooth.BluetoothRobotListener;
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
 import com.example.approbot.data.model.SessionConfig;
+import com.example.approbot.data.repository.ActiveSessionRepository;
 import com.example.approbot.data.repository.RobotIdentityRepository;
 import com.example.approbot.network.RobotNetworkService;
 import com.example.approbot.network.RobotStatusReporter;
@@ -32,6 +33,7 @@ import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.ui.pictogram.PictogramActivity;
 import com.example.approbot.util.AppConstants;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -46,6 +48,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     private TextView tvBluetoothStatus;
     private TextView tvBatteryStatus;
     private RobotIdentityRepository identityRepository;
+    private ActiveSessionRepository activeSessionRepository;
     private BluetoothRobotManager bluetoothRobotManager;
 
     private RobotNetworkService networkService;
@@ -98,7 +101,9 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         tvNetworkStatus   = findViewById(R.id.tvNetworkStatus);
         tvBluetoothStatus = findViewById(R.id.tvBluetoothStatus);
         tvBatteryStatus   = findViewById(R.id.tvBatteryStatus);
-        identityRepository = new RobotIdentityRepository(this);
+        identityRepository      = new RobotIdentityRepository(this);
+        activeSessionRepository = new ActiveSessionRepository(this);
+        checkInterruptedSession();
 
         bluetoothRobotManager = new BluetoothRobotManager();
         bluetoothRobotManager.setListener(this);
@@ -113,18 +118,15 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
                 getIntent().getStringExtra("profile_description"));
 
-        // Arrancar y enlazar el servicio de red — solo una vez en onCreate
         Intent serviceIntent = new Intent(this, RobotNetworkService.class);
         startService(serviceIntent);
-        boolean bound = bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
+        bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
         tvNetworkStatus.setText(getString(R.string.network_status_waiting));
-
-        // Bluetooth
         if (hasBluetoothPermission()) startBluetoothConnection();
         else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             requestBluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT);
@@ -133,7 +135,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     @Override
     protected void onStop() {
         super.onStop();
-        // No desconectamos BT aquí — debe seguir activo durante la sesión en PictogramActivity
         if (statusReporter != null) statusReporter.stop();
     }
 
@@ -144,8 +145,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             unbindService(serviceConnection);
             serviceBound = false;
         }
-        // Paramos el servicio solo si el usuario sale explícitamente (botón volver)
-        // No lo paramos en recreaciones de configuración
     }
 
     // --- Enrutamiento de mensajes TCP ---
@@ -167,6 +166,12 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                     break;
                 case AppConstants.MSG_SESSION_END:
                     handleSessionEnd(payloadStr, out);
+                    break;
+                case AppConstants.MSG_SESSION_PAUSE:
+                    handleSessionPause(payloadStr, out);
+                    break;
+                case AppConstants.MSG_SESSION_RESUME:
+                    handleSessionResume(payloadStr, out);
                     break;
                 case AppConstants.MSG_ACTIVITY_START:
                     handleActivityStart(payloadStr);
@@ -205,6 +210,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             Log.e(TAG, "Error construyendo SESSION_READY", e);
         }
 
+        activeSessionRepository.save(config);
+
         ArrayList<String> pictogramList = new ArrayList<>(config.pictograms);
         String profileJson = config.studentProfile != null
                 ? studentProfileToJson(config.studentProfile) : null;
@@ -225,6 +232,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
         LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_END));
+        activeSessionRepository.clear();
 
         try {
             JSONObject payload = new JSONObject();
@@ -239,11 +247,53 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         }
     }
 
+    private void handleSessionPause(String payloadStr, java.io.PrintWriter out) {
+        LocalBroadcastManager.getInstance(this)
+                .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_PAUSE));
+
+        String sessionId = "";
+        try {
+            if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
+        } catch (JSONException ignored) {}
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("sessionId", sessionId);
+            payload.put("robotId", identityRepository.getRobotName("Robot-1"));
+            JSONObject msg = new JSONObject();
+            msg.put("type", AppConstants.MSG_SESSION_PAUSED);
+            msg.put("payload", payload.toString());
+            out.println(msg.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error construyendo SESSION_PAUSED", e);
+        }
+    }
+
+    private void handleSessionResume(String payloadStr, java.io.PrintWriter out) {
+        LocalBroadcastManager.getInstance(this)
+                .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_RESUME));
+
+        String sessionId = "";
+        try {
+            if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
+        } catch (JSONException ignored) {}
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("sessionId", sessionId);
+            payload.put("robotId", identityRepository.getRobotName("Robot-1"));
+            JSONObject msg = new JSONObject();
+            msg.put("type", AppConstants.MSG_SESSION_RESUMED);
+            msg.put("payload", payload.toString());
+            out.println(msg.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error construyendo SESSION_RESUMED", e);
+        }
+    }
+
     private void handleActivityStart(String payloadStr) {
         if (payloadStr == null) return;
         try {
             JSONObject payload = new JSONObject(payloadStr);
-            org.json.JSONArray pics = payload.optJSONArray("pictograms");
+            JSONArray pics = payload.optJSONArray("pictograms");
             if (pics == null || pics.length() == 0) return;
             ArrayList<String> list = new ArrayList<>();
             for (int i = 0; i < pics.length(); i++) list.add(pics.getString(i));
@@ -270,6 +320,18 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         } catch (JSONException e) {
             Log.w(TAG, "Error parseando ROBOT_FEEDBACK: " + payloadStr);
         }
+    }
+
+    private void checkInterruptedSession() {
+        SessionConfig interrupted = activeSessionRepository.load();
+        if (interrupted == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Sesión interrumpida")
+                .setMessage("Había una sesión activa cuando la app se cerró.\n¿Descartar y continuar?")
+                .setPositiveButton("Descartar", (d, w) -> activeSessionRepository.clear())
+                .setNegativeButton("Esperar reconexión", null)
+                .setCancelable(false)
+                .show();
     }
 
     // --- BluetoothRobotListener ---
@@ -362,7 +424,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             JSONObject obj = new JSONObject();
             obj.put("id", p.id);
             obj.put("name", p.name);
-            org.json.JSONArray colors = new org.json.JSONArray();
+            JSONArray colors = new JSONArray();
             for (String c : p.excludedColors) colors.put(c);
             obj.put("excludedColors", colors);
             if (p.backgroundSoundResName != null) obj.put("backgroundSoundResName", p.backgroundSoundResName);
