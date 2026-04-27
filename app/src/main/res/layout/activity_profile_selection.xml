@@ -3,20 +3,18 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:background="@color/tea_bg"
     android:padding="16dp"
     android:id="@+id/main">
 
     <Button
         android:id="@+id/back_button"
         android:layout_width="wrap_content"
-        android:layout_height="48dp"
+        android:layout_height="wrap_content"
         android:text="@string/back_text"
         android:contentDescription="@string/back_content_desc"
-        android:minHeight="48dp"
-        android:minWidth="96dp"
+        style="@style/TEA.Button"
         android:layout_marginBottom="16dp"
-        android:backgroundTint="@color/design_default_color_primary"
-        android:textSize="18sp"
         android:layout_gravity="start" />
 
     <TextView
@@ -24,8 +22,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Selecciona un perfil"
-        android:textSize="24sp"
+        android:textSize="26sp"
         android:textStyle="bold"
+        android:textColor="@color/tea_text_primary"
         android:layout_marginBottom="16dp" />
 
     <androidx.recyclerview.widget.RecyclerView

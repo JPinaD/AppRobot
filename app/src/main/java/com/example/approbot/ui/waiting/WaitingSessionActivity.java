@@ -108,11 +108,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         bluetoothRobotManager = new BluetoothRobotManager();
         bluetoothRobotManager.setListener(this);
 
-        findViewById(R.id.back_button).setOnClickListener(v -> {
-            bluetoothRobotManager.disconnect();
-            stopService(new Intent(this, RobotNetworkService.class));
-            finish();
-        });
+        findViewById(R.id.back_button).setOnClickListener(v -> attemptExit());
         ((TextView) findViewById(R.id.tvSelectedProfileName)).setText(
                 getIntent().getStringExtra("profile_name"));
         ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
@@ -229,6 +225,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         try {
             if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
         } catch (JSONException ignored) {}
+
+        // Mostrar pantalla de cierre amigable para el alumno
+        runOnUiThread(() -> startActivity(
+                new Intent(this, com.example.approbot.ui.sessionend.SessionEndActivity.class)));
 
         LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_END));
@@ -432,5 +432,31 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         } catch (JSONException e) {
             return null;
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        super.onBackPressed();
+        attemptExit();
+    }
+
+    /** Pide confirmación si hay sesión activa antes de salir. */
+    private void attemptExit() {
+        if (activeSessionRepository.load() != null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("¿Salir?")
+                    .setMessage("Hay una sesión activa. ¿Seguro que quieres salir?")
+                    .setPositiveButton("Salir", (d, w) -> doExit())
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+        } else {
+            doExit();
+        }
+    }
+
+    private void doExit() {
+        bluetoothRobotManager.disconnect();
+        stopService(new Intent(this, RobotNetworkService.class));
+        finish();
     }
 }

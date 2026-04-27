@@ -4,29 +4,19 @@
     android:layout_height="match_parent"
     android:gravity="center"
     android:orientation="vertical"
+    android:background="@color/tea_bg"
     android:padding="24dp"
     android:id="@+id/main">
-
-    <Button
-        android:id="@+id/back_button"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:text="@string/back_text"
-        android:contentDescription="@string/back_content_desc"
-        android:minHeight="48dp"
-        android:minWidth="96dp"
-        android:layout_marginBottom="16dp"
-        android:backgroundTint="@color/design_default_color_primary"
-        android:textSize="18sp"
-        android:layout_gravity="start" />
 
     <TextView
         android:id="@+id/tvWaitingTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Esperando inicio de sesión"
-        android:textSize="24sp"
+        android:textSize="26sp"
         android:textStyle="bold"
+        android:textColor="@color/tea_text_primary"
+        android:gravity="center"
         android:layout_marginBottom="24dp" />
 
     <TextView
@@ -34,8 +24,10 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Perfil"
-        android:textSize="20sp"
+        android:textSize="22sp"
         android:textStyle="bold"
+        android:textColor="@color/tea_text_primary"
+        android:gravity="center"
         android:layout_marginBottom="8dp" />
 
     <TextView
@@ -43,14 +35,19 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Descripción"
-        android:textSize="16sp" />
+        android:textSize="18sp"
+        android:textColor="@color/tea_text_secondary"
+        android:gravity="center"
+        android:layout_marginBottom="32dp" />
 
     <TextView
         android:id="@+id/tvNetworkStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:textSize="14sp"
+        android:layout_marginTop="16dp"
+        android:textSize="16sp"
+        android:textColor="@color/tea_text_secondary"
+        android:gravity="center"
         android:text="@string/network_status_waiting" />
 
     <TextView
@@ -58,7 +55,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:textSize="14sp"
+        android:textSize="16sp"
+        android:textColor="@color/tea_text_secondary"
+        android:gravity="center"
         android:text="@string/bt_status_connecting" />
 
     <TextView
@@ -66,7 +65,18 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:textSize="14sp"
+        android:textSize="16sp"
+        android:textColor="@color/tea_text_secondary"
+        android:gravity="center"
         android:visibility="gone" />
+
+    <Button
+        android:id="@+id/back_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/back_text"
+        android:contentDescription="@string/back_content_desc"
+        style="@style/TEA.Button"
+        android:layout_marginTop="40dp" />
 
 </LinearLayout>
