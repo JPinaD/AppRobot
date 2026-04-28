@@ -1,26 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center"
     android:orientation="vertical"
-    android:id="@+id/main">
+    android:background="@color/tea_bg"
+    android:padding="32dp">
 
     <TextView
         android:id="@+id/tvSplashMessage"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="App Robot"
-        android:textSize="28sp"
+        android:text="Robot"
+        android:textSize="36sp"
         android:textStyle="bold"
-        android:layout_marginBottom="32dp" />
+        android:textColor="@color/tea_primary"
+        android:layout_marginBottom="16dp" />
 
     <TextView
         android:id="@+id/tvTapToContinue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Toque la pantalla para continuar"
-        android:textSize="20sp"
-        android:layout_marginTop="16dp" />
+        android:text="Toca la pantalla para continuar"
+        android:textSize="22sp"
+        android:textColor="@color/tea_text_secondary"
+        android:gravity="center" />
 
 </LinearLayout>

@@ -9,4 +9,29 @@
     <string name="bt_status_disconnected">BT: Desconectado</string>
     <string name="bt_status_error">BT: Error</string>
     <string name="bt_battery_format">Batería: %d%%</string>
+
+    <!-- Emociones -->
+    <string name="emotion_happy">Feliz</string>
+    <string name="emotion_sad">Triste</string>
+    <string name="emotion_angry">Enfadado</string>
+    <string name="emotion_surprised">Sorprendido</string>
+    <string name="emotion_scared">Asustado</string>
+    <string name="emotion_question">¿Cómo se siente?</string>
+
+    <!-- Actividad social -->
+    <string name="social_option_a">Opción A</string>
+    <string name="social_option_b">Opción B</string>
+
+    <!-- Actividad secuencia -->
+    <string name="sequence_watch">¡Mira la secuencia!</string>
+    <string name="sequence_repeat">¡Ahora repítela!</string>
+    <string name="sequence_correct">¡Muy bien!</string>
+
+    <!-- Actividad calma -->
+    <string name="calm_breathe">Respira…</string>
+
+    <!-- Actividad turnos -->
+    <string name="turns_my_turn">¡Mi turno!</string>
+    <string name="turns_wait">Espera tu turno</string>
+    <string name="turns_done_button">Pasar turno</string>
 </resources>
