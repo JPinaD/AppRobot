@@ -9,4 +9,8 @@
     <string name="bt_status_disconnected">BT: Desconectado</string>
     <string name="bt_status_error">BT: Error</string>
     <string name="bt_battery_format">Batería: %d%%</string>
+    <string name="settings_robot_name">Cambiar nombre</string>
+    <string name="settings_robot_name_title">Nombre del robot</string>
+    <string name="settings_robot_name_hint">Ej: Robot-2</string>
+    <string name="settings_robot_name_saved">Nombre actualizado a: %s</string>
 </resources>

@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -113,6 +114,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             stopService(new Intent(this, RobotNetworkService.class));
             finish();
         });
+        findViewById(R.id.btn_settings).setOnClickListener(v -> showRobotNameDialog());
         ((TextView) findViewById(R.id.tvSelectedProfileName)).setText(
                 getIntent().getStringExtra("profile_name"));
         ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
@@ -145,6 +147,33 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             unbindService(serviceConnection);
             serviceBound = false;
         }
+    }
+
+    // --- Configuración de identidad ---
+
+    private void showRobotNameDialog() {
+        String currentName = identityRepository.getRobotName("Robot-1");
+        EditText input = new EditText(this);
+        input.setText(currentName);
+        input.setHint(R.string.settings_robot_name_hint);
+        input.setSelectAllOnFocus(true);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.settings_robot_name_title)
+                .setView(input)
+                .setPositiveButton("Guardar", (d, w) -> {
+                    String newName = input.getText().toString().trim();
+                    if (newName.isEmpty()) return;
+                    identityRepository.saveRobotName(newName);
+                    if (serviceBound) {
+                        networkService.restartNsd(newName, identityRepository.getPort());
+                    }
+                    Toast.makeText(this,
+                            getString(R.string.settings_robot_name_saved, newName),
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
     }
 
     // --- Enrutamiento de mensajes TCP ---
