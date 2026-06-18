@@ -116,7 +116,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         bluetoothRobotManager.setListener(this);
 
         findViewById(R.id.back_button).setOnClickListener(v -> attemptExit());
+<<<<<<< HEAD
         findViewById(R.id.btn_settings).setOnClickListener(v -> showRobotNameDialog());
+=======
+>>>>>>> faseF1-polishAndCompletion
         ((TextView) findViewById(R.id.tvSelectedProfileName)).setText(
                 getIntent().getStringExtra("profile_name"));
         ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
@@ -340,6 +343,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
         } catch (JSONException ignored) {}
 
+<<<<<<< HEAD
+=======
+        // Mostrar pantalla de cierre amigable para el alumno
+>>>>>>> faseF1-polishAndCompletion
         runOnUiThread(() -> startActivity(
                 new Intent(this, com.example.approbot.ui.sessionend.SessionEndActivity.class)));
 
@@ -553,6 +560,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         attemptExit();
     }
 
+<<<<<<< HEAD
+=======
+    /** Pide confirmación si hay sesión activa antes de salir. */
+>>>>>>> faseF1-polishAndCompletion
     private void attemptExit() {
         if (activeSessionRepository.load() != null) {
             new AlertDialog.Builder(this)
@@ -567,7 +578,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     }
 
     private void doExit() {
+<<<<<<< HEAD
         KioskModeManager.exit(this);
+=======
+>>>>>>> faseF1-polishAndCompletion
         bluetoothRobotManager.disconnect();
         stopService(new Intent(this, RobotNetworkService.class));
         finish();

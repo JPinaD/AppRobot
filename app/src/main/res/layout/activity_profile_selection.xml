@@ -4,33 +4,33 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/tea_bg"
-    android:padding="24dp">
-
-    <TextView
-        android:id="@+id/tvTitleProfiles"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="¿Quién eres?"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        android:textColor="@color/tea_primary"
-        android:gravity="center"
-        android:layout_marginBottom="24dp" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvProfiles"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+    android:padding="16dp"
+    android:id="@+id/main">
 
     <Button
         android:id="@+id/back_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Volver"
+        android:text="@string/back_text"
         android:contentDescription="@string/back_content_desc"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginTop="16dp"
-        style="@style/TEA.Button.Outline" />
+        style="@style/TEA.Button"
+        android:layout_marginBottom="16dp"
+        android:layout_gravity="start" />
+
+    <TextView
+        android:id="@+id/tvTitleProfiles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Selecciona un perfil"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:textColor="@color/tea_text_primary"
+        android:layout_marginBottom="16dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvProfiles"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="8dp" />
 
 </LinearLayout>

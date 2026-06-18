@@ -7,7 +7,6 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.GridLayout;
-import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -155,8 +154,13 @@ public class PictogramActivity extends AppCompatActivity {
 
     private void buildGrid(List<String> pictogramIds) {
         for (String id : pictogramIds) {
-            ImageButton btn = new ImageButton(this);
-            int resId = getResources().getIdentifier(id, "drawable", getPackageName());
+            // Contenedor vertical: imagen + etiqueta
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(android.view.Gravity.CENTER);
+            cell.setBackgroundColor(0xFFFFFFFF);
+            cell.setClickable(true);
+            cell.setFocusable(true);
 
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
             params.width  = 0;
@@ -164,17 +168,45 @@ public class PictogramActivity extends AppCompatActivity {
             params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f);
             params.rowSpec    = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f);
             params.setMargins(16, 16, 16, 16);
-            btn.setLayoutParams(params);
-            btn.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-            btn.setPadding(16, 16, 16, 16);
+            cell.setLayoutParams(params);
 
-            if (resId != 0) { btn.setImageResource(resId); btn.setBackgroundResource(resId); }
-            else btn.setBackgroundColor(0xFFE0E0E0);
+            // Imagen
+            android.widget.ImageView img = new android.widget.ImageView(this);
+            int resId = getResources().getIdentifier(id, "drawable", getPackageName());
+            if (resId != 0) img.setImageResource(resId);
+            else img.setBackgroundColor(0xFFE0E0E0);
+            img.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            img.setAdjustViewBounds(true);
+            LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+            imgParams.setMargins(16, 16, 16, 8);
+            img.setLayoutParams(imgParams);
+            cell.addView(img);
 
-            btn.setContentDescription(id);
-            btn.setOnClickListener(v -> onPictogramClicked(id));
-            gridPictograms.addView(btn);
+            // Etiqueta
+            TextView label = new TextView(this);
+            String labelText = id.startsWith("pic_") ? capitalize(id.substring(4)) : id;
+            label.setText(labelText);
+            label.setTextSize(16f);
+            label.setTextColor(0xFF212121);
+            label.setGravity(android.view.Gravity.CENTER);
+            label.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            labelParams.setMargins(8, 0, 8, 12);
+            label.setLayoutParams(labelParams);
+            cell.addView(label);
+
+            cell.setContentDescription(labelText);
+            cell.setOnClickListener(v -> onPictogramClicked(id));
+            gridPictograms.addView(cell);
         }
+    }
+
+    private String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     private void onPictogramClicked(String pictogramId) {

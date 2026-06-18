@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tea_bg">#FAFAFA</color>
+    <color name="tea_card_bg">#FFFFFF</color>
+    <color name="tea_accent">#4A90D9</color>
+    <color name="tea_text_primary">#212121</color>
+    <color name="tea_text_secondary">#616161</color>
+    <color name="tea_border">#BDBDBD</color>
+    <color name="tea_success">#388E3C</color>
+</resources>

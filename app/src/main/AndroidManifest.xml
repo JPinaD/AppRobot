@@ -28,25 +28,20 @@
         <activity
             android:name=".ui.waiting.WaitingSessionActivity"
             android:exported="false"
+            android:theme="@style/Theme.AppRobot.TEA"
             android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity
             android:name=".ui.pictogram.PictogramActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/Theme.AppRobot.TEA" />
         <activity
             android:name=".ui.sessionend.SessionEndActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/Theme.AppRobot.TEA" />
         <activity
             android:name=".ui.profile.ProfileSelectionActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.message.RobotMessageActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.feedback.FeedbackActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.activity.ActivityPlayerActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/Theme.AppRobot.TEA" />
 
         <!-- Nuevas actividades del catálogo -->
         <activity
@@ -67,7 +62,8 @@
 
         <activity
             android:name=".ui.splash.RobotSplashActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.AppRobot.TEA">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

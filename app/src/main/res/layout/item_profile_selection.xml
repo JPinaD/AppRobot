@@ -5,29 +5,25 @@
     android:orientation="vertical"
     android:padding="20dp"
     android:layout_marginBottom="12dp"
-    android:layout_marginStart="8dp"
-    android:layout_marginEnd="8dp"
-    android:background="@color/tea_surface"
+    android:background="@color/tea_card_bg"
     android:elevation="2dp">
 
     <TextView
         android:id="@+id/tvProfileName"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Nombre"
-        android:textSize="24sp"
+        android:textSize="22sp"
         android:textStyle="bold"
-        android:textColor="@color/tea_text_main"
-        android:gravity="center" />
+        android:textColor="@color/tea_text_primary" />
 
     <TextView
         android:id="@+id/tvProfileDescription"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="16sp"
+        android:text="Descripción"
+        android:textSize="18sp"
         android:textColor="@color/tea_text_secondary"
-        android:gravity="center"
-        android:layout_marginTop="4dp" />
+        android:layout_marginTop="6dp" />
 
 </LinearLayout>
