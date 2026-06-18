@@ -3,7 +3,7 @@
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="@color/tea_bg">
 
     <!-- Grid de pictogramas -->
     <GridLayout
@@ -23,7 +23,7 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="center"
-        android:background="#C8E6C9"
+        android:background="@color/tea_correct"
         android:visibility="gone">
 
         <View
@@ -39,7 +39,7 @@
             android:layout_height="wrap_content"
             android:textSize="28sp"
             android:textStyle="bold"
-            android:textColor="#1B5E20"
+            android:textColor="@color/tea_primary"
             android:gravity="center"
             android:padding="16dp"
             android:visibility="gone" />
