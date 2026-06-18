@@ -116,10 +116,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         bluetoothRobotManager.setListener(this);
 
         findViewById(R.id.back_button).setOnClickListener(v -> attemptExit());
-<<<<<<< HEAD
         findViewById(R.id.btn_settings).setOnClickListener(v -> showRobotNameDialog());
-=======
->>>>>>> faseF1-polishAndCompletion
         ((TextView) findViewById(R.id.tvSelectedProfileName)).setText(
                 getIntent().getStringExtra("profile_name"));
         ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
@@ -155,7 +152,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         }
     }
 
-    // --- Configuración de identidad ---
+    // --- Configuracion de identidad ---
 
     private void showRobotNameDialog() {
         String currentName = identityRepository.getRobotName("Robot-1");
@@ -228,19 +225,17 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     private void handleSessionStart(String payloadStr, java.io.PrintWriter out) {
         SessionConfig config = SessionConfig.fromJson(payloadStr);
         if (config == null) {
-            Log.w(TAG, "SESSION_START con payload inválido, ignorado");
+            Log.w(TAG, "SESSION_START con payload invalido, ignorado");
             return;
         }
 
         String activityId = config.activityId;
 
-        // Verificar que el activityId es conocido
         if (!isKnownActivity(activityId)) {
             Log.w(TAG, "SESSION_START con activityId desconocido: " + activityId);
             return;
         }
 
-        // Enviar SESSION_READY
         try {
             JSONObject payload = new JSONObject();
             payload.put("sessionId", config.sessionId);
@@ -255,7 +250,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
         activeSessionRepository.save(config);
 
-        // Enrutar a la Activity correspondiente
         runOnUiThread(() -> {
             Intent intent = buildActivityIntent(activityId, config);
             if (intent != null) startActivity(intent);
@@ -343,10 +337,6 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
         } catch (JSONException ignored) {}
 
-<<<<<<< HEAD
-=======
-        // Mostrar pantalla de cierre amigable para el alumno
->>>>>>> faseF1-polishAndCompletion
         runOnUiThread(() -> startActivity(
                 new Intent(this, com.example.approbot.ui.sessionend.SessionEndActivity.class)));
 
@@ -446,10 +436,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         SessionConfig interrupted = activeSessionRepository.load();
         if (interrupted == null) return;
         new AlertDialog.Builder(this)
-                .setTitle("Sesión interrumpida")
-                .setMessage("Había una sesión activa cuando la app se cerró.\n¿Descartar y continuar?")
+                .setTitle("Sesion interrumpida")
+                .setMessage("Habia una sesion activa cuando la app se cerro.\nDescartar y continuar?")
                 .setPositiveButton("Descartar", (d, w) -> activeSessionRepository.clear())
-                .setNegativeButton("Esperar reconexión", null)
+                .setNegativeButton("Esperar reconexion", null)
                 .setCancelable(false)
                 .show();
     }
@@ -458,7 +448,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     @Override
     public void onConnected() {
-        Log.i(TAG, "Conectado al robot físico vía Bluetooth");
+        Log.i(TAG, "Conectado al robot fisico via Bluetooth");
         runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_connecting)));
         bluetoothRobotManager.send(new RobotMessage(AppConstants.MSG_PING, null));
     }
@@ -488,7 +478,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     @Override
     public void onDisconnected() {
-        Log.i(TAG, "Desconectado del robot físico");
+        Log.i(TAG, "Desconectado del robot fisico");
         runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_disconnected)));
     }
 
@@ -503,7 +493,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 tvBatteryStatus.setVisibility(android.view.View.VISIBLE);
             });
         } catch (NumberFormatException e) {
-            Log.w(TAG, "BATTERY_STATUS con valor no numérico ignorado: " + payload);
+            Log.w(TAG, "BATTERY_STATUS con valor no numerico ignorado: " + payload);
         }
     }
 
@@ -531,7 +521,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         for (int i = 0; i < devices.size(); i++)
             names[i] = devices.get(i).name + " (" + devices.get(i).mac + ")";
         new AlertDialog.Builder(this)
-                .setTitle("Selecciona el módulo HC-05")
+                .setTitle("Selecciona el modulo HC-05")
                 .setItems(names, (d, w) -> {
                     identityRepository.saveHcMac(devices.get(w).mac);
                     bluetoothRobotManager.connect(WaitingSessionActivity.this, devices.get(w).mac);
@@ -560,15 +550,11 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         attemptExit();
     }
 
-<<<<<<< HEAD
-=======
-    /** Pide confirmación si hay sesión activa antes de salir. */
->>>>>>> faseF1-polishAndCompletion
     private void attemptExit() {
         if (activeSessionRepository.load() != null) {
             new AlertDialog.Builder(this)
-                    .setTitle("¿Salir?")
-                    .setMessage("Hay una sesión activa. ¿Seguro que quieres salir?")
+                    .setTitle("Salir?")
+                    .setMessage("Hay una sesion activa. Seguro que quieres salir?")
                     .setPositiveButton("Salir", (d, w) -> doExit())
                     .setNegativeButton("Cancelar", null)
                     .show();
@@ -578,10 +564,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     }
 
     private void doExit() {
-<<<<<<< HEAD
         KioskModeManager.exit(this);
-=======
->>>>>>> faseF1-polishAndCompletion
         bluetoothRobotManager.disconnect();
         stopService(new Intent(this, RobotNetworkService.class));
         finish();

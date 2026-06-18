@@ -6,39 +6,16 @@
     android:gravity="center"
     android:orientation="vertical"
     android:background="@color/tea_bg"
-<<<<<<< HEAD
     android:padding="32dp">
-=======
-    android:padding="24dp"
-    android:id="@+id/main">
-
-    <TextView
-        android:id="@+id/tvWaitingTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Esperando inicio de sesión"
-        android:textSize="26sp"
-        android:textStyle="bold"
-        android:textColor="@color/tea_text_primary"
-        android:gravity="center"
-        android:layout_marginBottom="24dp" />
->>>>>>> faseF1-polishAndCompletion
 
     <TextView
         android:id="@+id/tvSelectedProfileName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-<<<<<<< HEAD
         android:text=""
         android:textSize="28sp"
         android:textStyle="bold"
         android:textColor="@color/tea_primary"
-=======
-        android:text="Perfil"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:textColor="@color/tea_text_primary"
->>>>>>> faseF1-polishAndCompletion
         android:gravity="center"
         android:layout_marginBottom="8dp" />
 
@@ -46,7 +23,6 @@
         android:id="@+id/tvSelectedProfileDescription"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-<<<<<<< HEAD
         android:text=""
         android:textSize="18sp"
         android:textColor="@color/tea_text_secondary"
@@ -61,71 +37,41 @@
         android:textSize="22sp"
         android:textColor="@color/tea_text_main"
         android:gravity="center"
-=======
-        android:text="Descripción"
-        android:textSize="18sp"
-        android:textColor="@color/tea_text_secondary"
-        android:gravity="center"
->>>>>>> faseF1-polishAndCompletion
         android:layout_marginBottom="32dp" />
 
     <TextView
         android:id="@+id/tvNetworkStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-<<<<<<< HEAD
         android:text="@string/network_status_waiting"
         android:textSize="15sp"
         android:textColor="@color/tea_text_secondary"
         android:gravity="center" />
-=======
-        android:layout_marginTop="16dp"
-        android:textSize="16sp"
-        android:textColor="@color/tea_text_secondary"
-        android:gravity="center"
-        android:text="@string/network_status_waiting" />
->>>>>>> faseF1-polishAndCompletion
 
     <TextView
         android:id="@+id/tvBluetoothStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-<<<<<<< HEAD
         android:text="@string/bt_status_connecting"
         android:textSize="15sp"
         android:textColor="@color/tea_text_secondary"
         android:gravity="center"
         android:layout_marginTop="6dp" />
-=======
-        android:layout_marginTop="8dp"
-        android:textSize="16sp"
-        android:textColor="@color/tea_text_secondary"
-        android:gravity="center"
-        android:text="@string/bt_status_connecting" />
->>>>>>> faseF1-polishAndCompletion
 
     <TextView
         android:id="@+id/tvBatteryStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-<<<<<<< HEAD
         android:textSize="14sp"
         android:textColor="@color/tea_text_secondary"
         android:gravity="center"
         android:layout_marginTop="4dp"
-=======
-        android:layout_marginTop="4dp"
-        android:textSize="16sp"
-        android:textColor="@color/tea_text_secondary"
-        android:gravity="center"
->>>>>>> faseF1-polishAndCompletion
         android:visibility="gone" />
 
     <Button
         android:id="@+id/back_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-<<<<<<< HEAD
         android:text="Salir"
         android:contentDescription="@string/back_content_desc"
         android:layout_marginTop="48dp"
@@ -139,11 +85,5 @@
         android:contentDescription="@string/settings_robot_name"
         android:layout_marginTop="12dp"
         style="@style/TEA.Button.Outline" />
-=======
-        android:text="@string/back_text"
-        android:contentDescription="@string/back_content_desc"
-        style="@style/TEA.Button"
-        android:layout_marginTop="40dp" />
->>>>>>> faseF1-polishAndCompletion
 
 </LinearLayout>
