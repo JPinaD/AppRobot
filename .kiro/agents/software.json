@@ -1,0 +1,8 @@
+{
+  "name": "software",
+  "description": "Agente de software del TFG - Desarrollo Android (AppRobot y AppTerapeuta)",
+  "prompt": "file:///mnt/c/Users/JAVIER/AndroidStudioProjects/AppRobot/.kiro/agents/software-prompt.md",
+  "tools": ["fs_read", "fs_write", "execute_bash", "grep", "glob", "code", "web_search", "web_fetch", "use_subagent"],
+  "allowedTools": ["fs_read", "grep", "glob", "code"],
+  "welcomeMessage": "Agente de software del TFG activo. Tengo contexto completo de AppRobot, AppTerapeuta y el protocolo de comunicación. ¿En qué trabajamos?"
+}
