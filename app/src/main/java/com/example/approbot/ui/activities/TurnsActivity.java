@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -32,34 +34,30 @@ public class TurnsActivity extends AppCompatActivity {
     public static final String EXTRA_ITEMS           = "activity_items";
     public static final String EXTRA_STUDENT_PROFILE = "student_profile_json";
 
-    private static final int COLOR_MY_TURN = 0xFFFFF9C4; // amarillo suave
+    private static final int COLOR_MY_TURN = 0xFFFFF9C4;
     private static final int COLOR_WAITING = 0xFFFAFAFA;
 
     private TurnsViewModel viewModel;
     private TextView tvTurnStatus;
+    private TextView tvRound;
     private ImageView ivPictogram;
-    private Button btnTurn;
+    private Button btnDone;
     private LinearLayout root;
-
-    private String currentPictogramId;
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) { finish(); }
+        @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
 
     private final BroadcastReceiver turnSignalReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
+        @Override public void onReceive(Context context, Intent intent) {
             String payload = intent.getStringExtra("payload");
             if (payload == null) return;
             try {
                 JSONObject obj = new JSONObject(payload);
                 boolean active = obj.optBoolean("active", false);
                 viewModel.onTurnSignalReceived(active);
-            } catch (JSONException e) {
-                android.util.Log.w("TurnsActivity", "Error parseando TURN_SIGNAL: " + payload);
-            }
+            } catch (JSONException ignored) {}
         }
     };
 
@@ -69,43 +67,61 @@ public class TurnsActivity extends AppCompatActivity {
 
         String sessionId = getIntent().getStringExtra(EXTRA_SESSION_ID);
         ArrayList<String> items = getIntent().getStringArrayListExtra(EXTRA_ITEMS);
-        currentPictogramId = (items != null && !items.isEmpty()) ? items.get(0) : null;
 
         buildLayout();
 
         viewModel = new ViewModelProvider(this).get(TurnsViewModel.class);
-        viewModel.init(SessionNetworkHolder.getTcpServer(), sessionId);
+        viewModel.init(SessionNetworkHolder.getTcpServer(),
+                SessionNetworkHolder.getBluetoothManager(), sessionId, items);
 
         viewModel.getState().observe(this, state -> {
             switch (state) {
                 case MY_TURN:
                     root.setBackgroundColor(COLOR_MY_TURN);
                     tvTurnStatus.setText(R.string.turns_my_turn);
-                    btnTurn.setEnabled(true);
-                    if (currentPictogramId != null) {
-                        int resId = getResources().getIdentifier(
-                                currentPictogramId, "drawable", getPackageName());
-                        if (resId != 0) ivPictogram.setImageResource(resId);
-                        ivPictogram.setVisibility(android.view.View.VISIBLE);
-                    }
+                    btnDone.setEnabled(true);
+                    ivPictogram.setVisibility(android.view.View.VISIBLE);
                     break;
                 case WAITING:
                     root.setBackgroundColor(COLOR_WAITING);
                     tvTurnStatus.setText(R.string.turns_wait);
-                    btnTurn.setEnabled(false);
+                    btnDone.setEnabled(false);
                     ivPictogram.setVisibility(android.view.View.INVISIBLE);
+                    // In solo mode, auto-start next turn after 2s
+                    if (viewModel.isSoloMode() && viewModel.getRoundNumber().getValue() != null
+                            && viewModel.getRoundNumber().getValue() > 0) {
+                        handler.postDelayed(() -> viewModel.startSoloTurn(), 2000);
+                    }
+                    break;
+                case COMPLETED:
+                    root.setBackgroundColor(0xFFC8E6C9);
+                    tvTurnStatus.setText("¡Completado!");
+                    btnDone.setEnabled(false);
                     break;
             }
         });
 
+        viewModel.getCurrentPictogram().observe(this, picId -> {
+            if (picId == null) return;
+            int resId = getResources().getIdentifier(picId, "drawable", getPackageName());
+            if (resId != 0) ivPictogram.setImageResource(resId);
+        });
+
+        viewModel.getRoundNumber().observe(this, round ->
+                tvRound.setText("Ronda: " + round));
+
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
         lbm.registerReceiver(turnSignalReceiver, new IntentFilter(AppConstants.ACTION_TURN_SIGNAL));
+
+        // In solo mode, start first turn after a brief delay
+        handler.postDelayed(() -> viewModel.startSoloTurn(), 1000);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        handler.removeCallbacksAndMessages(null);
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.unregisterReceiver(sessionEndReceiver);
         lbm.unregisterReceiver(turnSignalReceiver);
@@ -119,12 +135,19 @@ public class TurnsActivity extends AppCompatActivity {
         root.setPadding(32, 48, 32, 48);
         setContentView(root);
 
+        tvRound = new TextView(this);
+        tvRound.setTextSize(14f);
+        tvRound.setTextColor(Color.parseColor("#616161"));
+        tvRound.setGravity(Gravity.CENTER);
+        tvRound.setText("Ronda: 0");
+        root.addView(tvRound);
+
         tvTurnStatus = new TextView(this);
         tvTurnStatus.setText(R.string.turns_wait);
         tvTurnStatus.setTextSize(28f);
         tvTurnStatus.setTextColor(Color.parseColor("#212121"));
         tvTurnStatus.setGravity(Gravity.CENTER);
-        tvTurnStatus.setPadding(0, 0, 0, 32);
+        tvTurnStatus.setPadding(0, 16, 0, 32);
         root.addView(tvTurnStatus);
 
         ivPictogram = new ImageView(this);
@@ -135,12 +158,12 @@ public class TurnsActivity extends AppCompatActivity {
         ivPictogram.setVisibility(android.view.View.INVISIBLE);
         root.addView(ivPictogram);
 
-        btnTurn = new Button(this);
-        btnTurn.setText(R.string.turns_done_button);
-        btnTurn.setTextSize(20f);
-        btnTurn.setMinHeight(80);
-        btnTurn.setEnabled(false);
-        btnTurn.setOnClickListener(v -> viewModel.onTurnButtonPressed());
-        root.addView(btnTurn);
+        btnDone = new Button(this);
+        btnDone.setText(R.string.turns_done_button);
+        btnDone.setTextSize(20f);
+        btnDone.setMinHeight(80);
+        btnDone.setEnabled(false);
+        btnDone.setOnClickListener(v -> viewModel.onTurnCompleted());
+        root.addView(btnDone);
     }
 }

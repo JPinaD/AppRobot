@@ -32,19 +32,19 @@ public class SequenceActivity extends AppCompatActivity {
     public static final String EXTRA_SEQUENCE_LENGTH = "sequence_length";
     public static final String EXTRA_STUDENT_PROFILE = "student_profile_json";
 
-    private static final int SHOW_DURATION_MS = 3000;
-    private static final int COLOR_CORRECT    = 0xFFC8E6C9;
-    private static final int COLOR_NEUTRAL    = 0xFFFAFAFA;
+    private static final int COLOR_CORRECT = 0xFFC8E6C9;
+    private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
+    private static final long SHOW_STEP_DELAY = 1200;
 
     private SequenceViewModel viewModel;
     private TextView tvInstruction;
     private LinearLayout layoutSequence;
     private LinearLayout layoutOptions;
     private LinearLayout root;
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) { finish(); }
+        @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
 
     @Override
@@ -54,12 +54,6 @@ public class SequenceActivity extends AppCompatActivity {
         String sessionId = getIntent().getStringExtra(EXTRA_SESSION_ID);
         ArrayList<String> items = getIntent().getStringArrayListExtra(EXTRA_ITEMS);
         int seqLength = getIntent().getIntExtra(EXTRA_SEQUENCE_LENGTH, 2);
-
-        // Si no hay ítems, usar colores/formas por defecto
-        if (items == null || items.isEmpty()) {
-            items = new ArrayList<>();
-            items.add("rojo"); items.add("azul"); items.add("verde");
-        }
 
         buildLayout();
 
@@ -71,7 +65,8 @@ public class SequenceActivity extends AppCompatActivity {
             switch (state) {
                 case SHOWING:
                     root.setBackgroundColor(COLOR_NEUTRAL);
-                    showSequence(viewModel.getSequence());
+                    tvInstruction.setText(R.string.sequence_watch);
+                    showSequenceAnimation(viewModel.getSequence());
                     break;
                 case INPUT:
                     layoutSequence.setVisibility(android.view.View.GONE);
@@ -82,11 +77,11 @@ public class SequenceActivity extends AppCompatActivity {
                     root.setBackgroundColor(COLOR_CORRECT);
                     tvInstruction.setText(R.string.sequence_correct);
                     layoutOptions.setVisibility(android.view.View.GONE);
+                    // Auto-restart with new sequence after 2s
+                    handler.postDelayed(() -> viewModel.restart(), 2500);
                     break;
                 case WRONG:
-                    // Volver a mostrar la secuencia tras breve pausa
-                    new Handler(Looper.getMainLooper()).postDelayed(() ->
-                            viewModel.restart(), 800);
+                    handler.postDelayed(() -> viewModel.restart(), 1000);
                     break;
             }
         });
@@ -98,6 +93,7 @@ public class SequenceActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        handler.removeCallbacksAndMessages(null);
         LocalBroadcastManager.getInstance(this).unregisterReceiver(sessionEndReceiver);
     }
 
@@ -129,30 +125,38 @@ public class SequenceActivity extends AppCompatActivity {
         root.addView(layoutOptions);
     }
 
-    private void showSequence(List<String> sequence) {
-        tvInstruction.setText(R.string.sequence_watch);
+    private void showSequenceAnimation(List<String> sequence) {
         layoutSequence.setVisibility(android.view.View.VISIBLE);
         layoutOptions.setVisibility(android.view.View.GONE);
         layoutSequence.removeAllViews();
 
-        for (String item : sequence) {
-            TextView tv = new TextView(this);
-            tv.setText(item);
-            tv.setTextSize(20f);
-            tv.setTextColor(Color.parseColor("#212121"));
-            tv.setBackgroundColor(0xFFE0E0E0);
-            tv.setPadding(24, 16, 24, 16);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            p.setMargins(8, 0, 8, 0);
-            tv.setLayoutParams(p);
-            layoutSequence.addView(tv);
+        // Show each step with delay and execute on robot
+        for (int i = 0; i < sequence.size(); i++) {
+            final String step = sequence.get(i);
+            final int index = i;
+            handler.postDelayed(() -> {
+                TextView tv = new TextView(this);
+                tv.setText(stepLabel(step));
+                tv.setTextSize(20f);
+                tv.setTextColor(Color.WHITE);
+                tv.setBackgroundColor(stepColor(step));
+                tv.setPadding(24, 16, 24, 16);
+                tv.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                p.setMargins(8, 0, 8, 0);
+                tv.setLayoutParams(p);
+                layoutSequence.addView(tv);
+            }, (long) index * SHOW_STEP_DELAY);
         }
 
-        // Ocultar tras SHOW_DURATION_MS
-        new Handler(Looper.getMainLooper()).postDelayed(
-                () -> viewModel.onShowingFinished(), SHOW_DURATION_MS);
+        // Execute physically on robot
+        viewModel.executeFullSequence();
+
+        // After showing all, transition to input
+        long totalShowTime = (long) sequence.size() * SHOW_STEP_DELAY + 1000;
+        handler.postDelayed(() -> viewModel.onShowingFinished(), totalShowTime);
     }
 
     private void showOptions(List<String> options) {
@@ -162,9 +166,11 @@ public class SequenceActivity extends AppCompatActivity {
 
         for (String item : options) {
             Button btn = new Button(this);
-            btn.setText(item);
+            btn.setText(stepLabel(item));
             btn.setTextSize(18f);
             btn.setMinHeight(80);
+            btn.setBackgroundColor(stepColor(item));
+            btn.setTextColor(Color.WHITE);
             LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -172,6 +178,26 @@ public class SequenceActivity extends AppCompatActivity {
             btn.setLayoutParams(p);
             btn.setOnClickListener(v -> viewModel.onItemSelected(item));
             layoutOptions.addView(btn);
+        }
+    }
+
+    private String stepLabel(String step) {
+        switch (step) {
+            case "FORWARD": return "↑";
+            case "LEFT":    return "←";
+            case "RIGHT":   return "→";
+            case "SERVO":   return "★";
+            default:        return step;
+        }
+    }
+
+    private int stepColor(String step) {
+        switch (step) {
+            case "FORWARD": return 0xFF4CAF50;
+            case "LEFT":    return 0xFF2196F3;
+            case "RIGHT":   return 0xFFFF9800;
+            case "SERVO":   return 0xFF9C27B0;
+            default:        return 0xFF757575;
         }
     }
 }

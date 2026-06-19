@@ -51,10 +51,19 @@ public class AppConstants {
     public static final String BT_PREFS_KEY_MAC = "hc05_mac";
 
     // Mensajes Arduino <-> AppRobot (via BT)
-    public static final String MSG_BATTERY_STATUS = "BATTERY_STATUS";
-    public static final String MSG_MOVE           = "MOVE";
-    public static final String MSG_STOP           = "STOP";
-    public static final String MSG_SENSOR_REQUEST = "SENSOR_REQUEST";
-    public static final String MSG_SENSOR_DATA    = "SENSOR_DATA";
-    public static final String MSG_ROBOT_STATUS   = "ROBOT_STATUS";
+    public static final String MSG_BATTERY_STATUS  = "BATTERY_STATUS";
+    public static final String MSG_MOVE            = "MOVE";
+    public static final String MSG_STOP            = "STOP";
+    public static final String MSG_SENSOR_REQUEST  = "SENSOR_REQUEST";
+    public static final String MSG_SENSOR_DATA     = "SENSOR_DATA";
+    public static final String MSG_ROBOT_STATUS    = "ROBOT_STATUS";
+    public static final String MSG_CELEBRATE       = "CELEBRATE";
+    public static final String MSG_CELEBRATE_DONE  = "CELEBRATE_DONE";
+    public static final String MSG_DENY            = "DENY";
+    public static final String MSG_DENY_DONE       = "DENY_DONE";
+    public static final String MSG_MOVE_TIMED      = "MOVE_TIMED";
+    public static final String MSG_MOVE_DONE       = "MOVE_DONE";
+    public static final String MSG_BREATHE_START   = "BREATHE_START";
+    public static final String MSG_BREATHE_STOP    = "BREATHE_STOP";
+    public static final String MSG_BLOCKED         = "BLOCKED";
 }

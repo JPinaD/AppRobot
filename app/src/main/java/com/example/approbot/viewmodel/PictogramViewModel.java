@@ -55,7 +55,7 @@ public class PictogramViewModel extends ViewModel implements ActivityStatusProvi
         selectedCount++;
         selectionConfirmed.postValue(true);
         sendPictogramSelected(pictogramId);
-        sendServoConfirm();
+        sendCelebrate();
     }
 
     public void onFeedbackReceived(String text) {
@@ -68,14 +68,9 @@ public class PictogramViewModel extends ViewModel implements ActivityStatusProvi
 
     // --- ActivityStatusProvider ---
 
-    @Override
-    public Integer getBatteryPct() { return null; } // lo lee RobotStatusReporter del sistema
-
-    @Override
-    public String getActivityId() { return active ? ACTIVITY_ID : null; }
-
-    @Override
-    public Integer getProgressPct() {
+    @Override public Integer getBatteryPct() { return null; }
+    @Override public String getActivityId() { return active ? ACTIVITY_ID : null; }
+    @Override public Integer getProgressPct() {
         if (!active || totalPictograms == 0) return null;
         return Math.min(100, selectedCount * 100 / totalPictograms);
     }
@@ -96,11 +91,8 @@ public class PictogramViewModel extends ViewModel implements ActivityStatusProvi
         }
     }
 
-    private void sendServoConfirm() {
-        if (bluetoothManager == null) {
-            Log.w(TAG, "HC-05 no disponible, omitiendo SERVO_COMMAND");
-            return;
-        }
-        bluetoothManager.send(new RobotMessage("SERVO_COMMAND", "CONFIRM"));
+    private void sendCelebrate() {
+        if (bluetoothManager == null) return;
+        bluetoothManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
     }
 }

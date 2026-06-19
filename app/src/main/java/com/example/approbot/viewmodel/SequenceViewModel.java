@@ -17,95 +17,144 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 public class SequenceViewModel extends ViewModel {
 
     private static final String TAG = "SequenceViewModel";
+    private static final String[] MOVE_POOL = {"FORWARD", "LEFT", "RIGHT", "SERVO"};
 
-    public enum SequenceState { SHOWING, INPUT, CORRECT, WRONG }
+    public enum State { SHOWING, INPUT, CORRECT, WRONG }
 
-    private final MutableLiveData<SequenceState> state = new MutableLiveData<>(SequenceState.SHOWING);
+    private final MutableLiveData<State> state = new MutableLiveData<>(State.SHOWING);
     private final MutableLiveData<List<String>> shuffledOptions = new MutableLiveData<>();
 
     private TcpServer tcpServer;
-    private BluetoothRobotManager bluetoothManager;
+    private BluetoothRobotManager btManager;
     private String sessionId;
-    private List<String> sequence = new ArrayList<>();
-    private List<String> userSelection = new ArrayList<>();
 
-    public void init(TcpServer tcpServer, BluetoothRobotManager bluetoothManager,
-                     String sessionId, List<String> allItems, int sequenceLength) {
-        this.tcpServer        = tcpServer;
-        this.bluetoothManager = bluetoothManager;
-        this.sessionId        = sessionId;
+    private List<String> currentSequence = new ArrayList<>();
+    private List<String> previousSequence = new ArrayList<>();
+    private int inputIndex = 0;
+    private int sequenceLength;
+    private final Random random = new Random();
 
-        // Construir secuencia aleatoria de la longitud indicada
-        List<String> pool = new ArrayList<>(allItems);
-        Collections.shuffle(pool);
-        sequence = pool.subList(0, Math.min(sequenceLength, pool.size()));
-
-        // Opciones desordenadas para la fase INPUT
-        List<String> opts = new ArrayList<>(sequence);
-        Collections.shuffle(opts);
-        shuffledOptions.setValue(opts);
+    public void init(TcpServer tcpServer, BluetoothRobotManager btManager,
+                     String sessionId, List<String> items, int seqLength) {
+        this.tcpServer = tcpServer;
+        this.btManager = btManager;
+        this.sessionId = sessionId;
+        this.sequenceLength = Math.max(2, Math.min(seqLength, 5));
+        generateNewSequence();
     }
 
-    public LiveData<SequenceState> getState()          { return state; }
+    public LiveData<State> getState() { return state; }
     public LiveData<List<String>> getShuffledOptions() { return shuffledOptions; }
-    public List<String> getSequence()                  { return sequence; }
+    public List<String> getSequence() { return currentSequence; }
 
-    /** Llamado cuando termina el tiempo de muestra: pasa a fase INPUT. */
+    /** Called after the showing animation finishes — transition to input. */
     public void onShowingFinished() {
-        userSelection.clear();
-        state.postValue(SequenceState.INPUT);
+        inputIndex = 0;
+        List<String> options = new ArrayList<>(currentSequence);
+        Collections.shuffle(options);
+        shuffledOptions.postValue(options);
+        state.postValue(State.INPUT);
     }
 
-    public void onItemSelected(String itemId) {
-        if (SequenceState.INPUT != state.getValue()) return;
-        userSelection.add(itemId);
-        if (userSelection.size() == sequence.size()) {
-            validateSelection();
-        }
-    }
-
-    private void validateSelection() {
-        boolean correct = userSelection.equals(sequence);
-        if (correct) {
-            state.postValue(SequenceState.CORRECT);
-            sendActivityResult(true);
-            sendServoCommand();
+    /** Called when user taps an item in the input phase. */
+    public void onItemSelected(String item) {
+        String expected = currentSequence.get(inputIndex);
+        if (item.equals(expected)) {
+            inputIndex++;
+            executeStep(item);
+            if (inputIndex >= currentSequence.size()) {
+                state.postValue(State.CORRECT);
+                sendResult(true);
+                sendCelebrate();
+            }
         } else {
-            state.postValue(SequenceState.WRONG);
-            sendActivityResult(false);
+            state.postValue(State.WRONG);
+            sendResult(false);
+            sendDeny();
         }
     }
 
-    /** Reinicia la secuencia (tras fallo). */
+    /** Restart: generate new sequence and show again. */
     public void restart() {
-        userSelection.clear();
-        state.postValue(SequenceState.SHOWING);
+        generateNewSequence();
+        state.postValue(State.SHOWING);
     }
 
-    private void sendActivityResult(boolean correct) {
+    /** Generate a random sequence different from the previous one. */
+    private void generateNewSequence() {
+        List<String> seq;
+        do {
+            seq = new ArrayList<>();
+            for (int i = 0; i < sequenceLength; i++) {
+                seq.add(MOVE_POOL[random.nextInt(MOVE_POOL.length)]);
+            }
+        } while (seq.equals(previousSequence));
+        previousSequence = new ArrayList<>(seq);
+        currentSequence = seq;
+    }
+
+    /** Execute a single step on the physical robot. */
+    private void executeStep(String step) {
+        if (btManager == null) return;
+        switch (step) {
+            case "FORWARD":
+                btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
+                        "{\"dir\":\"FORWARD\",\"ms\":600}"));
+                break;
+            case "LEFT":
+                btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
+                        "{\"dir\":\"LEFT\",\"ms\":400}"));
+                break;
+            case "RIGHT":
+                btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
+                        "{\"dir\":\"RIGHT\",\"ms\":400}"));
+                break;
+            case "SERVO":
+                btManager.send(new RobotMessage("SERVO_COMMAND", "CONFIRM"));
+                break;
+        }
+    }
+
+    /** Execute the full sequence for demonstration. */
+    public void executeFullSequence() {
+        if (btManager == null) return;
+        // Send each step with delays handled on Arduino side via MOVE_TIMED
+        for (int i = 0; i < currentSequence.size(); i++) {
+            final String step = currentSequence.get(i);
+            final int delay = i * 1200; // 1.2s between steps
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                    .postDelayed(() -> executeStep(step), delay);
+        }
+    }
+
+    private void sendResult(boolean correct) {
         if (tcpServer == null) return;
         try {
             JSONObject payload = new JSONObject();
             payload.put("sessionId", sessionId);
             payload.put("correct", correct);
+            payload.put("sequenceLength", sequenceLength);
             JSONObject msg = new JSONObject();
             msg.put("type", AppConstants.MSG_ACTIVITY_RESULT);
             msg.put("payload", payload.toString());
             tcpServer.sendToClient(msg.toString());
         } catch (JSONException e) {
-            Log.e(TAG, "Error construyendo ACTIVITY_RESULT", e);
+            Log.e(TAG, "Error enviando resultado", e);
         }
     }
 
-    private void sendServoCommand() {
-        if (bluetoothManager == null) {
-            Log.w(TAG, "HC-05 no disponible, omitiendo SERVO_COMMAND");
-            return;
-        }
-        bluetoothManager.send(new RobotMessage(AppConstants.MSG_SERVO_COMMAND, "CONFIRM"));
+    private void sendCelebrate() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
+    }
+
+    private void sendDeny() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
     }
 }

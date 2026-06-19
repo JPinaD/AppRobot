@@ -7,6 +7,7 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
 import com.example.approbot.bluetooth.BluetoothRobotManager;
+import com.example.approbot.data.model.RobotMessage;
 import com.example.approbot.data.model.SessionConfig.SocialScenarioContent;
 import com.example.approbot.network.TcpServer;
 import com.example.approbot.util.AppConstants;
@@ -20,71 +21,93 @@ public class SocialViewModel extends ViewModel {
 
     private static final String TAG = "SocialViewModel";
 
-    public static class SocialState {
+    public static class UiState {
         public final SocialScenarioContent scenario;
-        public final String outcomeText; // null = mostrando opciones
-        public SocialState(SocialScenarioContent scenario, String outcomeText) {
-            this.scenario    = scenario;
+        public final String outcomeText;
+        public final int currentIndex;
+        public final int total;
+
+        UiState(SocialScenarioContent scenario, String outcomeText, int index, int total) {
+            this.scenario = scenario;
             this.outcomeText = outcomeText;
+            this.currentIndex = index;
+            this.total = total;
         }
     }
 
-    private final MutableLiveData<SocialState> state = new MutableLiveData<>();
+    private final MutableLiveData<UiState> state = new MutableLiveData<>();
 
     private TcpServer tcpServer;
+    private BluetoothRobotManager btManager;
     private String sessionId;
     private List<SocialScenarioContent> scenarios;
     private int currentIndex = 0;
 
-    public void init(TcpServer tcpServer, String sessionId,
-                     List<SocialScenarioContent> scenarios) {
-        this.tcpServer  = tcpServer;
-        this.sessionId  = sessionId;
-        this.scenarios  = scenarios;
-        if (scenarios != null && !scenarios.isEmpty()) {
-            state.setValue(new SocialState(scenarios.get(0), null));
-        }
+    public void init(TcpServer tcpServer, BluetoothRobotManager btManager,
+                     String sessionId, List<SocialScenarioContent> scenarios) {
+        this.tcpServer = tcpServer;
+        this.btManager = btManager;
+        this.sessionId = sessionId;
+        this.scenarios = scenarios;
+        showScenario();
     }
 
-    public LiveData<SocialState> getState() { return state; }
+    public LiveData<UiState> getState() { return state; }
 
     public void onOptionSelected(String option) {
-        SocialState current = state.getValue();
-        if (current == null || current.scenario == null) return;
+        SocialScenarioContent s = scenarios.get(currentIndex);
+        boolean isA = "A".equals(option);
+        String outcome = isA ? s.outcomeA : s.outcomeB;
 
-        String outcome = "A".equals(option)
-                ? current.scenario.outcomeA
-                : current.scenario.outcomeB;
+        // Robot takes path: left for A, right for B
+        String dir = isA ? "LEFT" : "RIGHT";
+        sendMoveTimed(dir, 500);
 
-        state.postValue(new SocialState(current.scenario, outcome));
-        sendActivityResult(option);
+        sendResult(option, s.id);
+        state.postValue(new UiState(s, outcome, currentIndex, scenarios.size()));
     }
 
-    /** Avanza al siguiente escenario o reinicia al primero. */
     public void nextScenario() {
-        if (scenarios == null || scenarios.isEmpty()) return;
-        currentIndex = (currentIndex + 1) % scenarios.size();
-        state.postValue(new SocialState(scenarios.get(currentIndex), null));
+        // Robot returns to center
+        sendMoveTimed("BACKWARD", 500);
+
+        currentIndex++;
+        if (currentIndex >= scenarios.size()) {
+            currentIndex = 0; // Loop or could end
+            sendCelebrate();
+        }
+        showScenario();
     }
 
-    /** Actualiza el escenario activo (llamado al recibir SESSION_START con nuevo escenario). */
-    public void updateScenario(SocialScenarioContent scenario) {
-        state.postValue(new SocialState(scenario, null));
+    private void showScenario() {
+        SocialScenarioContent s = scenarios.get(currentIndex);
+        state.postValue(new UiState(s, null, currentIndex, scenarios.size()));
     }
 
-    private void sendActivityResult(String option) {
+    private void sendResult(String option, String scenarioId) {
         if (tcpServer == null) return;
         try {
             JSONObject payload = new JSONObject();
             payload.put("sessionId", sessionId);
-            payload.put("correct", JSONObject.NULL);
-            payload.put("itemId", option);
+            payload.put("scenarioId", scenarioId);
+            payload.put("selectedOption", option);
             JSONObject msg = new JSONObject();
             msg.put("type", AppConstants.MSG_ACTIVITY_RESULT);
             msg.put("payload", payload.toString());
             tcpServer.sendToClient(msg.toString());
         } catch (JSONException e) {
-            Log.e(TAG, "Error construyendo ACTIVITY_RESULT", e);
+            Log.e(TAG, "Error enviando resultado", e);
         }
+    }
+
+    private void sendMoveTimed(String dir, int ms) {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
+                "{\"dir\":\"" + dir + "\",\"ms\":" + ms + "}"));
+    }
+
+    private void sendCelebrate() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
     }
 }

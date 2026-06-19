@@ -20,32 +20,27 @@ import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.SocialViewModel;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.util.List;
-
 public class SocialActivity extends AppCompatActivity {
 
     public static final String EXTRA_SESSION_ID          = "session_id";
     public static final String EXTRA_SESSION_CONFIG_JSON = "session_config_json";
     public static final String EXTRA_STUDENT_PROFILE     = "student_profile_json";
 
-    private static final int COLOR_OUTCOME_A = 0xFFB3E5FC; // azul suave
-    private static final int COLOR_OUTCOME_B = 0xFFE1BEE7; // lila suave
+    private static final int COLOR_OUTCOME_A = 0xFFB3E5FC;
+    private static final int COLOR_OUTCOME_B = 0xFFE1BEE7;
     private static final int COLOR_NEUTRAL   = 0xFFFAFAFA;
 
     private SocialViewModel viewModel;
     private TextView tvDescription;
     private TextView tvOutcome;
+    private TextView tvProgress;
     private Button btnOptionA;
     private Button btnOptionB;
     private Button btnNext;
     private LinearLayout root;
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) { finish(); }
+        @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
 
     @Override
@@ -60,12 +55,14 @@ public class SocialActivity extends AppCompatActivity {
         buildLayout();
 
         viewModel = new ViewModelProvider(this).get(SocialViewModel.class);
-        viewModel.init(SessionNetworkHolder.getTcpServer(), sessionId, config.socialScenarios);
+        viewModel.init(SessionNetworkHolder.getTcpServer(),
+                SessionNetworkHolder.getBluetoothManager(), sessionId, config.socialScenarios);
 
         viewModel.getState().observe(this, state -> {
             if (state == null) return;
+            tvProgress.setText((state.currentIndex + 1) + " / " + state.total);
+
             if (state.outcomeText == null) {
-                // Mostrando opciones
                 root.setBackgroundColor(COLOR_NEUTRAL);
                 tvDescription.setText(state.scenario.description);
                 btnOptionA.setText(state.scenario.optionA);
@@ -75,7 +72,6 @@ public class SocialActivity extends AppCompatActivity {
                 btnOptionB.setEnabled(true);
                 btnNext.setVisibility(android.view.View.GONE);
             } else {
-                // Mostrando consecuencia
                 boolean isA = state.outcomeText.equals(state.scenario.outcomeA);
                 root.setBackgroundColor(isA ? COLOR_OUTCOME_A : COLOR_OUTCOME_B);
                 tvOutcome.setText(state.outcomeText);
@@ -104,11 +100,18 @@ public class SocialActivity extends AppCompatActivity {
         root.setPadding(32, 48, 32, 48);
         setContentView(root);
 
+        tvProgress = new TextView(this);
+        tvProgress.setTextSize(14f);
+        tvProgress.setTextColor(Color.parseColor("#616161"));
+        tvProgress.setGravity(Gravity.CENTER);
+        tvProgress.setPadding(0, 0, 0, 16);
+        root.addView(tvProgress);
+
         tvDescription = new TextView(this);
         tvDescription.setTextSize(20f);
         tvDescription.setTextColor(Color.parseColor("#212121"));
         tvDescription.setGravity(Gravity.CENTER);
-        tvDescription.setPadding(0, 0, 0, 32);
+        tvDescription.setPadding(16, 0, 16, 32);
         root.addView(tvDescription);
 
         LinearLayout btnRow = new LinearLayout(this);
@@ -140,7 +143,7 @@ public class SocialActivity extends AppCompatActivity {
         tvOutcome.setTextSize(18f);
         tvOutcome.setTextColor(Color.parseColor("#212121"));
         tvOutcome.setGravity(Gravity.CENTER);
-        tvOutcome.setPadding(0, 24, 0, 16);
+        tvOutcome.setPadding(16, 24, 16, 16);
         tvOutcome.setVisibility(android.view.View.GONE);
         root.addView(tvOutcome);
 
