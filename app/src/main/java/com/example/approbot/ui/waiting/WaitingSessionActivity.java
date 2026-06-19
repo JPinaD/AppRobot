@@ -288,6 +288,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 Intent intent = new Intent(this, EmotionActivity.class);
                 intent.putExtra(EmotionActivity.EXTRA_SESSION_ID, config.sessionId);
                 intent.putStringArrayListExtra(EmotionActivity.EXTRA_ITEMS, new ArrayList<>(config.activityItems));
+                intent.putExtra(EmotionActivity.EXTRA_STEPS, config.sequenceLength > 0 ? config.sequenceLength : 5);
                 if (profileJson != null) intent.putExtra(EmotionActivity.EXTRA_STUDENT_PROFILE, profileJson);
                 return intent;
             }

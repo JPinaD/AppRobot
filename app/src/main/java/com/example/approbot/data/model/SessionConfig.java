@@ -67,7 +67,7 @@ public class SessionConfig {
                 if (items != null) {
                     for (int i = 0; i < items.length(); i++) activityItems.add(items.getString(i));
                 }
-                sequenceLength = content.optInt("sequenceLength", 0);
+                sequenceLength = content.optInt("sequenceLength", content.optInt("steps", 0));
                 JSONArray scenarios = content.optJSONArray("scenarios");
                 if (scenarios != null) {
                     for (int i = 0; i < scenarios.length(); i++) {
