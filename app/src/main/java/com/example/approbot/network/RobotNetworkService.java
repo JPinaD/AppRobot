@@ -69,6 +69,17 @@ public class RobotNetworkService extends Service {
         SessionNetworkHolder.clear();
     }
 
+    /** Re-registra el servicio NSD con un nuevo nombre de robot. */
+    public void restartNsd(String newRobotName, int port) {
+        if (nsdAdvertiser != null) {
+            nsdAdvertiser.stop();
+            nsdAdvertiser = null;
+        }
+        nsdAdvertiser = new NsdAdvertiser(this);
+        nsdAdvertiser.start(newRobotName, port);
+        Log.d(TAG, "NSD reiniciado como " + newRobotName);
+    }
+
     public TcpServer getTcpServer() { return tcpServer; }
 
     @Override

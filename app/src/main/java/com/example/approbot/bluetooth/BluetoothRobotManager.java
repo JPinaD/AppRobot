@@ -27,37 +27,50 @@ public class BluetoothRobotManager {
 
     private static final String TAG = "BluetoothRobotManager";
     private static final UUID SPP_UUID = UUID.fromString(AppConstants.BT_SPP_UUID);
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_DELAY_MS = 3000;
 
     private BluetoothSocket socket;
     private PrintWriter writer;
     private BluetoothRobotListener listener;
     private volatile boolean running = false;
+    private volatile boolean shouldReconnect = false;
+    private Context connectContext;
+    private String connectMac;
 
     public void setListener(BluetoothRobotListener listener) {
         this.listener = listener;
     }
 
-    /** Abre el socket RFCOMM en un hilo de fondo. */
+    /** Abre el socket RFCOMM en un hilo de fondo con reintentos. */
     public void connect(Context context, String macAddress) {
         if (macAddress == null) {
             notifyError("MAC del HC-05 no configurada");
             return;
         }
-        new Thread(() -> {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                int result = ContextCompat.checkSelfPermission(
-                        context.getApplicationContext(), android.Manifest.permission.BLUETOOTH_CONNECT);
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    notifyError("Permiso Bluetooth no concedido");
-                    return;
-                }
-            }
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null || !adapter.isEnabled()) {
-                notifyError("Bluetooth no disponible o desactivado");
+        this.connectContext = context.getApplicationContext();
+        this.connectMac = macAddress;
+        this.shouldReconnect = true;
+        new Thread(() -> connectWithRetries(), "bt-connect").start();
+    }
+
+    private void connectWithRetries() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            int result = ContextCompat.checkSelfPermission(
+                    connectContext, android.Manifest.permission.BLUETOOTH_CONNECT);
+            if (result != PackageManager.PERMISSION_GRANTED) {
+                notifyError("Permiso Bluetooth no concedido");
                 return;
             }
-            BluetoothDevice device = adapter.getRemoteDevice(macAddress);
+        }
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null || !adapter.isEnabled()) {
+            notifyError("Bluetooth no disponible o desactivado");
+            return;
+        }
+        BluetoothDevice device = adapter.getRemoteDevice(connectMac);
+
+        for (int attempt = 1; attempt <= MAX_RETRIES && shouldReconnect; attempt++) {
             try {
                 BluetoothSocket s;
                 try {
@@ -72,14 +85,20 @@ public class BluetoothRobotManager {
                 running = true;
                 if (listener != null) listener.onConnected();
                 readLoop(s);
+                return; // readLoop terminó normalmente (desconexión limpia)
             } catch (IOException e) {
-                Log.e(TAG, "Error al conectar con HC-05", e);
-                notifyError(e.getMessage());
+                Log.w(TAG, "Intento " + attempt + "/" + MAX_RETRIES + " fallido: " + e.getMessage());
+                if (attempt < MAX_RETRIES && shouldReconnect) {
+                    try { Thread.sleep(RETRY_DELAY_MS); } catch (InterruptedException ignored) { return; }
+                } else {
+                    notifyError("No se pudo conectar tras " + MAX_RETRIES + " intentos: " + e.getMessage());
+                }
             } catch (SecurityException e) {
                 Log.e(TAG, "SecurityException al conectar", e);
                 notifyError(e.getMessage());
+                return;
             }
-        }, "bt-connect").start();
+        }
     }
 
     /** Serializa y envía un mensaje al robot. Seguro llamar desde cualquier hilo. */
@@ -94,6 +113,7 @@ public class BluetoothRobotManager {
 
     /** Cierra el socket limpiamente. */
     public void disconnect() {
+        shouldReconnect = false;
         running = false;
         if (socket != null) {
             try { socket.close(); } catch (IOException ignored) {}

@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -30,6 +31,12 @@ import com.example.approbot.data.repository.RobotIdentityRepository;
 import com.example.approbot.network.RobotNetworkService;
 import com.example.approbot.network.RobotStatusReporter;
 import com.example.approbot.network.SessionNetworkHolder;
+import com.example.approbot.ui.activities.CalmActivity;
+import com.example.approbot.ui.activities.EmotionActivity;
+import com.example.approbot.ui.activities.SequenceActivity;
+import com.example.approbot.ui.activities.SocialActivity;
+import com.example.approbot.ui.activities.TurnsActivity;
+import com.example.approbot.kiosk.KioskModeManager;
 import com.example.approbot.ui.pictogram.PictogramActivity;
 import com.example.approbot.util.AppConstants;
 
@@ -108,16 +115,14 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         bluetoothRobotManager = new BluetoothRobotManager();
         bluetoothRobotManager.setListener(this);
 
-        findViewById(R.id.back_button).setOnClickListener(v -> {
-            bluetoothRobotManager.disconnect();
-            stopService(new Intent(this, RobotNetworkService.class));
-            finish();
-        });
+        findViewById(R.id.back_button).setOnClickListener(v -> attemptExit());
+        findViewById(R.id.btn_settings).setOnClickListener(v -> showRobotNameDialog());
         ((TextView) findViewById(R.id.tvSelectedProfileName)).setText(
                 getIntent().getStringExtra("profile_name"));
         ((TextView) findViewById(R.id.tvSelectedProfileDescription)).setText(
                 getIntent().getStringExtra("profile_description"));
 
+        KioskModeManager.enter(this);
         Intent serviceIntent = new Intent(this, RobotNetworkService.class);
         startService(serviceIntent);
         bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
@@ -145,6 +150,33 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             unbindService(serviceConnection);
             serviceBound = false;
         }
+    }
+
+    // --- Configuracion de identidad ---
+
+    private void showRobotNameDialog() {
+        String currentName = identityRepository.getRobotName("Robot-1");
+        EditText input = new EditText(this);
+        input.setText(currentName);
+        input.setHint(R.string.settings_robot_name_hint);
+        input.setSelectAllOnFocus(true);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.settings_robot_name_title)
+                .setView(input)
+                .setPositiveButton("Guardar", (d, w) -> {
+                    String newName = input.getText().toString().trim();
+                    if (newName.isEmpty()) return;
+                    identityRepository.saveRobotName(newName);
+                    if (serviceBound) {
+                        networkService.restartNsd(newName, identityRepository.getPort());
+                    }
+                    Toast.makeText(this,
+                            getString(R.string.settings_robot_name_saved, newName),
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
     }
 
     // --- Enrutamiento de mensajes TCP ---
@@ -179,6 +211,9 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 case AppConstants.MSG_ROBOT_FEEDBACK:
                     handleRobotFeedback(payloadStr);
                     break;
+                case AppConstants.MSG_TURN_SIGNAL:
+                    handleTurnSignal(payloadStr);
+                    break;
                 default:
                     Log.d(TAG, "Mensaje no manejado: " + type);
             }
@@ -190,11 +225,14 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     private void handleSessionStart(String payloadStr, java.io.PrintWriter out) {
         SessionConfig config = SessionConfig.fromJson(payloadStr);
         if (config == null) {
-            Log.w(TAG, "SESSION_START con payload inválido, ignorado");
+            Log.w(TAG, "SESSION_START con payload invalido, ignorado");
             return;
         }
-        if (!"pictogram_v1".equals(config.activityId)) {
-            Log.w(TAG, "SESSION_START con activityId desconocido: " + config.activityId);
+
+        String activityId = config.activityId;
+
+        if (!isKnownActivity(activityId)) {
+            Log.w(TAG, "SESSION_START con activityId desconocido: " + activityId);
             return;
         }
 
@@ -212,16 +250,85 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
         activeSessionRepository.save(config);
 
-        ArrayList<String> pictogramList = new ArrayList<>(config.pictograms);
+        runOnUiThread(() -> {
+            Intent intent = buildActivityIntent(activityId, config);
+            if (intent != null) startActivity(intent);
+        });
+    }
+
+    private boolean isKnownActivity(String activityId) {
+        switch (activityId) {
+            case AppConstants.ACTIVITY_PICTOGRAM:
+            case AppConstants.ACTIVITY_PICTOGRAM_LEGACY:
+            case AppConstants.ACTIVITY_EMOTION:
+            case AppConstants.ACTIVITY_SOCIAL:
+            case AppConstants.ACTIVITY_SEQUENCE:
+            case AppConstants.ACTIVITY_CALM:
+            case AppConstants.ACTIVITY_TURNS:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private Intent buildActivityIntent(String activityId, SessionConfig config) {
         String profileJson = config.studentProfile != null
                 ? studentProfileToJson(config.studentProfile) : null;
 
-        runOnUiThread(() -> {
-            Intent intent = new Intent(this, PictogramActivity.class);
-            intent.putStringArrayListExtra(PictogramActivity.EXTRA_PICTOGRAMS, pictogramList);
-            if (profileJson != null) intent.putExtra(PictogramActivity.EXTRA_STUDENT_PROFILE, profileJson);
-            startActivity(intent);
-        });
+        switch (activityId) {
+            case AppConstants.ACTIVITY_PICTOGRAM:
+            case AppConstants.ACTIVITY_PICTOGRAM_LEGACY: {
+                ArrayList<String> pictogramList = new ArrayList<>(config.pictograms);
+                Intent intent = new Intent(this, PictogramActivity.class);
+                intent.putStringArrayListExtra(PictogramActivity.EXTRA_PICTOGRAMS, pictogramList);
+                if (profileJson != null) intent.putExtra(PictogramActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                return intent;
+            }
+            case AppConstants.ACTIVITY_EMOTION: {
+                Intent intent = new Intent(this, EmotionActivity.class);
+                intent.putExtra(EmotionActivity.EXTRA_SESSION_ID, config.sessionId);
+                intent.putStringArrayListExtra(EmotionActivity.EXTRA_ITEMS, new ArrayList<>(config.activityItems));
+                if (profileJson != null) intent.putExtra(EmotionActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                return intent;
+            }
+            case AppConstants.ACTIVITY_SOCIAL: {
+                Intent intent = new Intent(this, SocialActivity.class);
+                intent.putExtra(SocialActivity.EXTRA_SESSION_ID, config.sessionId);
+                intent.putExtra(SocialActivity.EXTRA_SESSION_CONFIG_JSON, config.toJson());
+                if (profileJson != null) intent.putExtra(SocialActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                return intent;
+            }
+            case AppConstants.ACTIVITY_SEQUENCE: {
+                Intent intent = new Intent(this, SequenceActivity.class);
+                intent.putExtra(SequenceActivity.EXTRA_SESSION_ID, config.sessionId);
+                intent.putExtra(SequenceActivity.EXTRA_SEQUENCE_LENGTH,
+                        config.sequenceLength > 0 ? config.sequenceLength : 2);
+                intent.putStringArrayListExtra(SequenceActivity.EXTRA_ITEMS, new ArrayList<>(config.activityItems));
+                if (profileJson != null) intent.putExtra(SequenceActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                return intent;
+            }
+            case AppConstants.ACTIVITY_CALM: {
+                Intent intent = new Intent(this, CalmActivity.class);
+                intent.putExtra(CalmActivity.EXTRA_SESSION_ID, config.sessionId);
+                return intent;
+            }
+            case AppConstants.ACTIVITY_TURNS: {
+                Intent intent = new Intent(this, TurnsActivity.class);
+                intent.putExtra(TurnsActivity.EXTRA_SESSION_ID, config.sessionId);
+                intent.putStringArrayListExtra(TurnsActivity.EXTRA_ITEMS, new ArrayList<>(config.activityItems));
+                if (profileJson != null) intent.putExtra(TurnsActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                return intent;
+            }
+            default:
+                return null;
+        }
+    }
+
+    private void handleTurnSignal(String payloadStr) {
+        if (payloadStr == null) return;
+        Intent broadcast = new Intent(AppConstants.ACTION_TURN_SIGNAL);
+        broadcast.putExtra("payload", payloadStr);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
     }
 
     private void handleSessionEnd(String payloadStr, java.io.PrintWriter out) {
@@ -229,6 +336,9 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         try {
             if (payloadStr != null) sessionId = new JSONObject(payloadStr).optString("sessionId", "");
         } catch (JSONException ignored) {}
+
+        runOnUiThread(() -> startActivity(
+                new Intent(this, com.example.approbot.ui.sessionend.SessionEndActivity.class)));
 
         LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(new Intent(AppConstants.ACTION_SESSION_END));
@@ -326,10 +436,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         SessionConfig interrupted = activeSessionRepository.load();
         if (interrupted == null) return;
         new AlertDialog.Builder(this)
-                .setTitle("Sesión interrumpida")
-                .setMessage("Había una sesión activa cuando la app se cerró.\n¿Descartar y continuar?")
+                .setTitle("Sesion interrumpida")
+                .setMessage("Habia una sesion activa cuando la app se cerro.\nDescartar y continuar?")
                 .setPositiveButton("Descartar", (d, w) -> activeSessionRepository.clear())
-                .setNegativeButton("Esperar reconexión", null)
+                .setNegativeButton("Esperar reconexion", null)
                 .setCancelable(false)
                 .show();
     }
@@ -338,7 +448,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     @Override
     public void onConnected() {
-        Log.i(TAG, "Conectado al robot físico vía Bluetooth");
+        Log.i(TAG, "Conectado al robot fisico via Bluetooth");
         runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_connecting)));
         bluetoothRobotManager.send(new RobotMessage(AppConstants.MSG_PING, null));
     }
@@ -368,7 +478,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     @Override
     public void onDisconnected() {
-        Log.i(TAG, "Desconectado del robot físico");
+        Log.i(TAG, "Desconectado del robot fisico");
         runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_disconnected)));
     }
 
@@ -383,7 +493,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 tvBatteryStatus.setVisibility(android.view.View.VISIBLE);
             });
         } catch (NumberFormatException e) {
-            Log.w(TAG, "BATTERY_STATUS con valor no numérico ignorado: " + payload);
+            Log.w(TAG, "BATTERY_STATUS con valor no numerico ignorado: " + payload);
         }
     }
 
@@ -411,7 +521,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         for (int i = 0; i < devices.size(); i++)
             names[i] = devices.get(i).name + " (" + devices.get(i).mac + ")";
         new AlertDialog.Builder(this)
-                .setTitle("Selecciona el módulo HC-05")
+                .setTitle("Selecciona el modulo HC-05")
                 .setItems(names, (d, w) -> {
                     identityRepository.saveHcMac(devices.get(w).mac);
                     bluetoothRobotManager.connect(WaitingSessionActivity.this, devices.get(w).mac);
@@ -432,5 +542,31 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         } catch (JSONException e) {
             return null;
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        super.onBackPressed();
+        attemptExit();
+    }
+
+    private void attemptExit() {
+        if (activeSessionRepository.load() != null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Salir?")
+                    .setMessage("Hay una sesion activa. Seguro que quieres salir?")
+                    .setPositiveButton("Salir", (d, w) -> doExit())
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+        } else {
+            doExit();
+        }
+    }
+
+    private void doExit() {
+        KioskModeManager.exit(this);
+        bluetoothRobotManager.disconnect();
+        stopService(new Intent(this, RobotNetworkService.class));
+        finish();
     }
 }

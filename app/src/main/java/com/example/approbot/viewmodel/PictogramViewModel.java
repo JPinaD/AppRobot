@@ -20,7 +20,7 @@ import org.json.JSONObject;
 public class PictogramViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "PictogramViewModel";
-    private static final String ACTIVITY_ID = "pictogram_v1";
+    private static final String ACTIVITY_ID = AppConstants.ACTIVITY_PICTOGRAM;
 
     private final MutableLiveData<Boolean> selectionConfirmed = new MutableLiveData<>(false);
     private final MutableLiveData<String>  feedbackText       = new MutableLiveData<>();

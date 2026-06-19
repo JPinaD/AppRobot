@@ -48,6 +48,23 @@
             android:name=".ui.activity.ActivityPlayerActivity"
             android:exported="false" />
 
+        <!-- Nuevas actividades del catálogo -->
+        <activity
+            android:name=".ui.activities.EmotionActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activities.SocialActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activities.SequenceActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activities.CalmActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activities.TurnsActivity"
+            android:exported="false" />
+
         <activity
             android:name=".ui.splash.RobotSplashActivity"
             android:exported="true">

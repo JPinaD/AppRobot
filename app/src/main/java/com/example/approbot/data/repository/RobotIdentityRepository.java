@@ -35,6 +35,11 @@ public class RobotIdentityRepository {
         return prefs.getString(AppConstants.BT_PREFS_KEY_MAC, null);
     }
 
+    /** Persiste el nombre del robot. */
+    public void saveRobotName(String name) {
+        prefs.edit().putString(KEY_ROBOT_NAME, name).apply();
+    }
+
     /** Persiste el MAC del HC-05. */
     public void saveHcMac(String mac) {
         prefs.edit().putString(AppConstants.BT_PREFS_KEY_MAC, mac).apply();
