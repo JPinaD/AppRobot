@@ -74,6 +74,9 @@ public class TurnsActivity extends AppCompatActivity {
         viewModel.init(SessionNetworkHolder.getTcpServer(),
                 SessionNetworkHolder.getBluetoothManager(), sessionId, items);
 
+        com.example.approbot.network.RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
+        if (reporter != null) reporter.setStatusProvider(viewModel);
+
         viewModel.getState().observe(this, state -> {
             switch (state) {
                 case MY_TURN:

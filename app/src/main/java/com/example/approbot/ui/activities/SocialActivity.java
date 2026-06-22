@@ -6,9 +6,12 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -26,21 +29,30 @@ public class SocialActivity extends AppCompatActivity {
     public static final String EXTRA_SESSION_CONFIG_JSON = "session_config_json";
     public static final String EXTRA_STUDENT_PROFILE     = "student_profile_json";
 
-    private static final int COLOR_OUTCOME_A = 0xFFB3E5FC;
-    private static final int COLOR_OUTCOME_B = 0xFFE1BEE7;
-    private static final int COLOR_NEUTRAL   = 0xFFFAFAFA;
+    private static final int COLOR_CORRECT = 0xFFC8E6C9;
+    private static final int COLOR_WRONG   = 0xFFFFCDD2;
+    private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
 
     private SocialViewModel viewModel;
-    private TextView tvDescription;
-    private TextView tvOutcome;
+    private LinearLayout root;
     private TextView tvProgress;
+    private ProgressBar progressBar;
+    private TextView tvDescription;
     private Button btnOptionA;
     private Button btnOptionB;
-    private Button btnNext;
-    private LinearLayout root;
+    private TextView tvFeedback;
+    private TextView tvCorrectHint;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
+    };
+    private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(false); }
+    };
+    private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(true); }
     };
 
     @Override
@@ -58,38 +70,77 @@ public class SocialActivity extends AppCompatActivity {
         viewModel.init(SessionNetworkHolder.getTcpServer(),
                 SessionNetworkHolder.getBluetoothManager(), sessionId, config.socialScenarios);
 
-        viewModel.getState().observe(this, state -> {
-            if (state == null) return;
-            tvProgress.setText((state.currentIndex + 1) + " / " + state.total);
+        com.example.approbot.network.RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
+        if (reporter != null) reporter.setStatusProvider(viewModel);
 
-            if (state.outcomeText == null) {
-                root.setBackgroundColor(COLOR_NEUTRAL);
-                tvDescription.setText(state.scenario.description);
-                btnOptionA.setText(state.scenario.optionA);
-                btnOptionB.setText(state.scenario.optionB);
-                tvOutcome.setVisibility(android.view.View.GONE);
-                btnOptionA.setEnabled(true);
-                btnOptionB.setEnabled(true);
-                btnNext.setVisibility(android.view.View.GONE);
-            } else {
-                boolean isA = state.outcomeText.equals(state.scenario.outcomeA);
-                root.setBackgroundColor(isA ? COLOR_OUTCOME_A : COLOR_OUTCOME_B);
-                tvOutcome.setText(state.outcomeText);
-                tvOutcome.setVisibility(android.view.View.VISIBLE);
-                btnOptionA.setEnabled(false);
-                btnOptionB.setEnabled(false);
-                btnNext.setVisibility(android.view.View.VISIBLE);
+        progressBar.setMax(viewModel.getTotalSquares());
+
+        viewModel.getUiState().observe(this, state -> {
+            if (state == null) return;
+
+            progressBar.setProgress(state.currentSquare);
+            tvProgress.setText("Casilla " + state.currentSquare + " / " + viewModel.getTotalSquares());
+
+            switch (state.state) {
+                case SHOWING:
+                    root.setBackgroundColor(COLOR_NEUTRAL);
+                    tvDescription.setText(state.scenario.description);
+                    btnOptionA.setText(state.scenario.optionA);
+                    btnOptionB.setText(state.scenario.optionB);
+                    btnOptionA.setVisibility(android.view.View.VISIBLE);
+                    btnOptionB.setVisibility(android.view.View.VISIBLE);
+                    setOptionsEnabled(true);
+                    tvFeedback.setVisibility(android.view.View.GONE);
+                    tvCorrectHint.setVisibility(android.view.View.GONE);
+                    break;
+
+                case CORRECT:
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    setOptionsEnabled(false);
+                    tvFeedback.setText(state.feedbackText);
+                    tvFeedback.setVisibility(android.view.View.VISIBLE);
+                    tvCorrectHint.setVisibility(android.view.View.GONE);
+                    // Espera a que el robot termine el movimiento y luego avanza
+                    handler.postDelayed(() -> viewModel.advanceToNext(), 2000);
+                    break;
+
+                case WRONG:
+                    root.setBackgroundColor(COLOR_WRONG);
+                    setOptionsEnabled(false);
+                    tvFeedback.setText(state.feedbackText);
+                    tvFeedback.setVisibility(android.view.View.VISIBLE);
+                    tvCorrectHint.setText("La respuesta correcta era: " + state.correctText);
+                    tvCorrectHint.setVisibility(android.view.View.VISIBLE);
+                    // Tras mostrar feedback, nuevo escenario sin avanzar
+                    handler.postDelayed(() -> viewModel.retryAfterWrong(), 3000);
+                    break;
+
+                case COMPLETED:
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    tvDescription.setText("¡Actividad completada!");
+                    tvDescription.setTextSize(28f);
+                    btnOptionA.setVisibility(android.view.View.GONE);
+                    btnOptionB.setVisibility(android.view.View.GONE);
+                    tvFeedback.setVisibility(android.view.View.GONE);
+                    tvCorrectHint.setVisibility(android.view.View.GONE);
+                    break;
             }
         });
 
-        LocalBroadcastManager.getInstance(this)
-                .registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+        lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
+        lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(sessionEndReceiver);
+        handler.removeCallbacksAndMessages(null);
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+        lbm.unregisterReceiver(sessionEndReceiver);
+        lbm.unregisterReceiver(pauseReceiver);
+        lbm.unregisterReceiver(resumeReceiver);
     }
 
     private void buildLayout() {
@@ -101,11 +152,17 @@ public class SocialActivity extends AppCompatActivity {
         setContentView(root);
 
         tvProgress = new TextView(this);
-        tvProgress.setTextSize(14f);
+        tvProgress.setTextSize(16f);
         tvProgress.setTextColor(Color.parseColor("#616161"));
         tvProgress.setGravity(Gravity.CENTER);
-        tvProgress.setPadding(0, 0, 0, 16);
         root.addView(tvProgress);
+
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        LinearLayout.LayoutParams pbParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 16);
+        pbParams.setMargins(32, 8, 32, 24);
+        progressBar.setLayoutParams(pbParams);
+        root.addView(progressBar);
 
         tvDescription = new TextView(this);
         tvDescription.setTextSize(20f);
@@ -139,19 +196,25 @@ public class SocialActivity extends AppCompatActivity {
         btnOptionB.setOnClickListener(v -> viewModel.onOptionSelected("B"));
         btnRow.addView(btnOptionB);
 
-        tvOutcome = new TextView(this);
-        tvOutcome.setTextSize(18f);
-        tvOutcome.setTextColor(Color.parseColor("#212121"));
-        tvOutcome.setGravity(Gravity.CENTER);
-        tvOutcome.setPadding(16, 24, 16, 16);
-        tvOutcome.setVisibility(android.view.View.GONE);
-        root.addView(tvOutcome);
+        tvFeedback = new TextView(this);
+        tvFeedback.setTextSize(18f);
+        tvFeedback.setTextColor(Color.parseColor("#212121"));
+        tvFeedback.setGravity(Gravity.CENTER);
+        tvFeedback.setPadding(16, 24, 16, 8);
+        tvFeedback.setVisibility(android.view.View.GONE);
+        root.addView(tvFeedback);
 
-        btnNext = new Button(this);
-        btnNext.setText("Siguiente");
-        btnNext.setTextSize(16f);
-        btnNext.setVisibility(android.view.View.GONE);
-        btnNext.setOnClickListener(v -> viewModel.nextScenario());
-        root.addView(btnNext);
+        tvCorrectHint = new TextView(this);
+        tvCorrectHint.setTextSize(16f);
+        tvCorrectHint.setTextColor(Color.parseColor("#1B5E20"));
+        tvCorrectHint.setGravity(Gravity.CENTER);
+        tvCorrectHint.setPadding(16, 8, 16, 16);
+        tvCorrectHint.setVisibility(android.view.View.GONE);
+        root.addView(tvCorrectHint);
+    }
+
+    private void setOptionsEnabled(boolean enabled) {
+        btnOptionA.setEnabled(enabled);
+        btnOptionB.setEnabled(enabled);
     }
 }

@@ -9,88 +9,131 @@ import androidx.lifecycle.ViewModel;
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
 import com.example.approbot.data.model.SessionConfig.SocialScenarioContent;
+import com.example.approbot.network.ActivityStatusProvider;
 import com.example.approbot.network.TcpServer;
 import com.example.approbot.util.AppConstants;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-public class SocialViewModel extends ViewModel {
+public class SocialViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "SocialViewModel";
+    private static final int TOTAL_SQUARES = 5;
+
+    public enum State { SHOWING, CORRECT, WRONG, COMPLETED }
 
     public static class UiState {
+        public final State state;
         public final SocialScenarioContent scenario;
-        public final String outcomeText;
-        public final int currentIndex;
-        public final int total;
+        public final String feedbackText;  // outcome de la opción seleccionada
+        public final String correctText;   // solo se muestra en fallo: cuál era la correcta
+        public final int currentSquare;    // 0..4 (casilla actual, avanza solo en acierto)
 
-        UiState(SocialScenarioContent scenario, String outcomeText, int index, int total) {
+        UiState(State state, SocialScenarioContent scenario, String feedbackText,
+                String correctText, int currentSquare) {
+            this.state = state;
             this.scenario = scenario;
-            this.outcomeText = outcomeText;
-            this.currentIndex = index;
-            this.total = total;
+            this.feedbackText = feedbackText;
+            this.correctText = correctText;
+            this.currentSquare = currentSquare;
         }
     }
 
-    private final MutableLiveData<UiState> state = new MutableLiveData<>();
+    private final MutableLiveData<UiState> uiState = new MutableLiveData<>();
 
     private TcpServer tcpServer;
     private BluetoothRobotManager btManager;
     private String sessionId;
-    private List<SocialScenarioContent> scenarios;
-    private int currentIndex = 0;
+
+    private List<SocialScenarioContent> scenarioPool;
+    private List<SocialScenarioContent> usedScenarios = new ArrayList<>();
+    private SocialScenarioContent currentScenario;
+    private int currentSquare = 0; // número de aciertos (casillas avanzadas)
 
     public void init(TcpServer tcpServer, BluetoothRobotManager btManager,
                      String sessionId, List<SocialScenarioContent> scenarios) {
         this.tcpServer = tcpServer;
         this.btManager = btManager;
         this.sessionId = sessionId;
-        this.scenarios = scenarios;
-        showScenario();
+        this.scenarioPool = new ArrayList<>(scenarios);
+        Collections.shuffle(this.scenarioPool);
+        pickNextScenario();
     }
 
-    public LiveData<UiState> getState() { return state; }
+    public LiveData<UiState> getUiState() { return uiState; }
+    public int getTotalSquares() { return TOTAL_SQUARES; }
+    public int getCurrentSquare() { return currentSquare; }
 
     public void onOptionSelected(String option) {
-        SocialScenarioContent s = scenarios.get(currentIndex);
-        boolean isA = "A".equals(option);
-        String outcome = isA ? s.outcomeA : s.outcomeB;
+        if (currentScenario == null) return;
 
-        // Robot takes path: left for A, right for B
-        String dir = isA ? "LEFT" : "RIGHT";
-        sendMoveTimed(dir, 500);
+        boolean correct = option.equals(currentScenario.correctOption);
+        String selectedOutcome = "A".equals(option) ? currentScenario.outcomeA : currentScenario.outcomeB;
 
-        sendResult(option, s.id);
-        state.postValue(new UiState(s, outcome, currentIndex, scenarios.size()));
-    }
+        sendResult(correct, option, currentScenario.id);
 
-    public void nextScenario() {
-        // Robot returns to center
-        sendMoveTimed("BACKWARD", 500);
+        if (correct) {
+            currentSquare++;
+            // Robot avanza una casilla (el avance ES el feedback positivo)
+            sendMoveTimed("FORWARD", 1000);
 
-        currentIndex++;
-        if (currentIndex >= scenarios.size()) {
-            currentIndex = 0; // Loop or could end
-            sendCelebrate();
+            if (currentSquare >= TOTAL_SQUARES) {
+                uiState.postValue(new UiState(State.COMPLETED, currentScenario,
+                        selectedOutcome, null, currentSquare));
+            } else {
+                uiState.postValue(new UiState(State.CORRECT, currentScenario,
+                        selectedOutcome, null, currentSquare));
+            }
+        } else {
+            // Robot niega con servo (no se mueve)
+            sendDeny();
+            String correctOptionText = "A".equals(currentScenario.correctOption)
+                    ? currentScenario.optionA : currentScenario.optionB;
+            uiState.postValue(new UiState(State.WRONG, currentScenario,
+                    selectedOutcome, correctOptionText, currentSquare));
         }
-        showScenario();
     }
 
-    private void showScenario() {
-        SocialScenarioContent s = scenarios.get(currentIndex);
-        state.postValue(new UiState(s, null, currentIndex, scenarios.size()));
+    /** Llamado por la Activity tras el delay post-acierto para cargar el siguiente escenario. */
+    public void advanceToNext() {
+        if (currentSquare >= TOTAL_SQUARES) {
+            uiState.postValue(new UiState(State.COMPLETED, currentScenario, null, null, currentSquare));
+            return;
+        }
+        pickNextScenario();
     }
 
-    private void sendResult(String option, String scenarioId) {
+    /** Llamado por la Activity tras el delay post-fallo para cargar nuevo escenario sin avanzar. */
+    public void retryAfterWrong() {
+        pickNextScenario();
+    }
+
+    private void pickNextScenario() {
+        // Si se han agotado los escenarios, reciclar con shuffle
+        if (scenarioPool.isEmpty()) {
+            scenarioPool.addAll(usedScenarios);
+            usedScenarios.clear();
+            Collections.shuffle(scenarioPool);
+        }
+        currentScenario = scenarioPool.remove(0);
+        usedScenarios.add(currentScenario);
+        uiState.postValue(new UiState(State.SHOWING, currentScenario, null, null, currentSquare));
+    }
+
+    private void sendResult(boolean correct, String option, String scenarioId) {
         if (tcpServer == null) return;
         try {
             JSONObject payload = new JSONObject();
             payload.put("sessionId", sessionId);
             payload.put("scenarioId", scenarioId);
             payload.put("selectedOption", option);
+            payload.put("correct", correct);
+            payload.put("square", currentSquare);
             JSONObject msg = new JSONObject();
             msg.put("type", AppConstants.MSG_ACTIVITY_RESULT);
             msg.put("payload", payload.toString());
@@ -106,8 +149,21 @@ public class SocialViewModel extends ViewModel {
                 "{\"dir\":\"" + dir + "\",\"ms\":" + ms + "}"));
     }
 
-    private void sendCelebrate() {
+    private void sendServoConfirm() {
         if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
+        btManager.send(new RobotMessage(AppConstants.MSG_SERVO_COMMAND, "CONFIRM"));
+    }
+
+    private void sendDeny() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
+    }
+
+    // --- ActivityStatusProvider ---
+
+    @Override public Integer getBatteryPct() { return null; }
+    @Override public String getActivityId() { return AppConstants.ACTIVITY_SOCIAL; }
+    @Override public Integer getProgressPct() {
+        return Math.min(100, currentSquare * 100 / TOTAL_SQUARES);
     }
 }

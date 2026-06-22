@@ -71,6 +71,9 @@ public class EmotionActivity extends AppCompatActivity {
         viewModel.init(SessionNetworkHolder.getTcpServer(),
                 SessionNetworkHolder.getBluetoothManager(), sessionId, items, steps);
 
+        com.example.approbot.network.RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
+        if (reporter != null) reporter.setStatusProvider(viewModel);
+
         progressBar.setMax(viewModel.getTotalSteps());
         updateProgressText();
         showCurrentEmotion();

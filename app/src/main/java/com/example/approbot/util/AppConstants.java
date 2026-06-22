@@ -66,4 +66,6 @@ public class AppConstants {
     public static final String MSG_BREATHE_START   = "BREATHE_START";
     public static final String MSG_BREATHE_STOP    = "BREATHE_STOP";
     public static final String MSG_BLOCKED         = "BLOCKED";
+    public static final String MSG_DANCE           = "DANCE";
+    public static final String MSG_DANCE_DONE      = "DANCE_DONE";
 }

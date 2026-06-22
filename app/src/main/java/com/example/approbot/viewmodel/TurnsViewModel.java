@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel;
 
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
+import com.example.approbot.network.ActivityStatusProvider;
 import com.example.approbot.network.TcpServer;
 import com.example.approbot.util.AppConstants;
 
@@ -19,7 +20,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-public class TurnsViewModel extends ViewModel {
+public class TurnsViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "TurnsViewModel";
 
@@ -134,4 +135,10 @@ public class TurnsViewModel extends ViewModel {
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_STOP, null));
     }
+
+    // --- ActivityStatusProvider ---
+
+    @Override public Integer getBatteryPct() { return null; }
+    @Override public String getActivityId() { return AppConstants.ACTIVITY_TURNS; }
+    @Override public Integer getProgressPct() { return null; } // turnos no tienen progreso lineal
 }

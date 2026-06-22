@@ -135,16 +135,19 @@ public class SessionConfig {
         public final String optionB;
         public final String outcomeA;
         public final String outcomeB;
+        public final String correctOption; // "A" o "B"
 
         public SocialScenarioContent(String id, String description,
                                      String optionA, String optionB,
-                                     String outcomeA, String outcomeB) {
-            this.id          = id;
-            this.description = description;
-            this.optionA     = optionA;
-            this.optionB     = optionB;
-            this.outcomeA    = outcomeA;
-            this.outcomeB    = outcomeB;
+                                     String outcomeA, String outcomeB,
+                                     String correctOption) {
+            this.id            = id;
+            this.description   = description;
+            this.optionA       = optionA;
+            this.optionB       = optionB;
+            this.outcomeA      = outcomeA;
+            this.outcomeB      = outcomeB;
+            this.correctOption = correctOption != null ? correctOption : "A";
         }
 
         public static SocialScenarioContent fromJson(JSONObject obj) {
@@ -156,7 +159,8 @@ public class SessionConfig {
                         obj.optString("optionA", ""),
                         obj.optString("optionB", ""),
                         obj.optString("outcomeA", ""),
-                        obj.optString("outcomeB", ""));
+                        obj.optString("outcomeB", ""),
+                        obj.optString("correctOption", "A"));
             } catch (Exception e) {
                 return null;
             }
@@ -170,6 +174,7 @@ public class SessionConfig {
             obj.put("optionB", optionB);
             obj.put("outcomeA", outcomeA);
             obj.put("outcomeB", outcomeB);
+            obj.put("correctOption", correctOption);
             return obj;
         }
     }

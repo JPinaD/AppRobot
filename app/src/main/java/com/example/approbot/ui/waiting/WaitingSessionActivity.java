@@ -140,7 +140,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     @Override
     protected void onStop() {
         super.onStop();
-        if (statusReporter != null) statusReporter.stop();
+        // Do NOT stop statusReporter here — activities run on top of this one
+        // and the reporter must keep sending ROBOT_STATUS to prevent TCP timeout.
     }
 
     @Override

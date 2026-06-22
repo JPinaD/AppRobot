@@ -20,6 +20,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.example.approbot.R;
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
+import com.example.approbot.network.ActivityStatusProvider;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 
@@ -89,6 +90,13 @@ public class CalmActivity extends AppCompatActivity {
 
         // Iniciar movimiento de respiracion en el robot
         startRobotBreathing();
+
+        com.example.approbot.network.RobotStatusReporter reporter = SessionNetworkHolder.getStatusReporter();
+        if (reporter != null) reporter.setStatusProvider(new ActivityStatusProvider() {
+            @Override public Integer getBatteryPct() { return null; }
+            @Override public String getActivityId() { return AppConstants.ACTIVITY_CALM; }
+            @Override public Integer getProgressPct() { return null; }
+        });
 
         LocalBroadcastManager.getInstance(this)
                 .registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));

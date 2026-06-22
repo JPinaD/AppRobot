@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel;
 
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
+import com.example.approbot.network.ActivityStatusProvider;
 import com.example.approbot.network.TcpServer;
 import com.example.approbot.util.AppConstants;
 
@@ -18,7 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class EmotionViewModel extends ViewModel {
+public class EmotionViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "EmotionViewModel";
 
@@ -45,6 +46,7 @@ public class EmotionViewModel extends ViewModel {
         this.totalSteps = steps > 0 ? steps : 5;
         this.emotionPool = items != null && !items.isEmpty() ? items :
                 defaultEmotions();
+        if (btManager == null) Log.w(TAG, "init(): btManager is NULL — BT commands will not work");
         pickNextEmotion();
     }
 
@@ -88,7 +90,7 @@ public class EmotionViewModel extends ViewModel {
     public void advanceAfterCorrect() {
         if (correctCount >= totalSteps) {
             state.postValue(State.COMPLETED);
-            sendCelebrate();
+            sendDance();
         } else {
             pickNextEmotion();
             state.postValue(State.SHOWING);
@@ -149,5 +151,19 @@ public class EmotionViewModel extends ViewModel {
     private void sendCelebrate() {
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
+    }
+
+    private void sendDance() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_DANCE, null));
+    }
+
+    // --- ActivityStatusProvider ---
+
+    @Override public Integer getBatteryPct() { return null; }
+    @Override public String getActivityId() { return correctCount < totalSteps ? AppConstants.ACTIVITY_EMOTION : null; }
+    @Override public Integer getProgressPct() {
+        if (totalSteps == 0) return null;
+        return Math.min(100, correctCount * 100 / totalSteps);
     }
 }

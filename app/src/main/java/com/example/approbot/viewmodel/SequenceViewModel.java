@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel;
 
 import com.example.approbot.bluetooth.BluetoothRobotManager;
 import com.example.approbot.data.model.RobotMessage;
+import com.example.approbot.network.ActivityStatusProvider;
 import com.example.approbot.network.TcpServer;
 import com.example.approbot.util.AppConstants;
 
@@ -19,7 +20,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-public class SequenceViewModel extends ViewModel {
+public class SequenceViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "SequenceViewModel";
     private static final String[] MOVE_POOL = {"FORWARD", "LEFT", "RIGHT", "SERVO"};
@@ -156,5 +157,14 @@ public class SequenceViewModel extends ViewModel {
     private void sendDeny() {
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
+    }
+
+    // --- ActivityStatusProvider ---
+
+    @Override public Integer getBatteryPct() { return null; }
+    @Override public String getActivityId() { return AppConstants.ACTIVITY_SEQUENCE; }
+    @Override public Integer getProgressPct() {
+        if (sequenceLength == 0) return null;
+        return Math.min(100, inputIndex * 100 / sequenceLength);
     }
 }
