@@ -80,10 +80,10 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
         if (correct) {
             currentSquare++;
             // Robot avanza una casilla (el avance ES el feedback positivo)
-            sendMoveTimed("FORWARD", 1000);
+            sendMoveTimed("FORWARD", 600);
 
             if (currentSquare >= TOTAL_SQUARES) {
-                uiState.postValue(new UiState(State.COMPLETED, currentScenario,
+                uiState.postValue(new UiState(State.CORRECT, currentScenario,
                         selectedOutcome, null, currentSquare));
             } else {
                 uiState.postValue(new UiState(State.CORRECT, currentScenario,
@@ -102,6 +102,7 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     /** Llamado por la Activity tras el delay post-acierto para cargar el siguiente escenario. */
     public void advanceToNext() {
         if (currentSquare >= TOTAL_SQUARES) {
+            sendDance();
             uiState.postValue(new UiState(State.COMPLETED, currentScenario, null, null, currentSquare));
             return;
         }
@@ -157,6 +158,11 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     private void sendDeny() {
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
+    }
+
+    private void sendDance() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_DANCE, null));
     }
 
     // --- ActivityStatusProvider ---
