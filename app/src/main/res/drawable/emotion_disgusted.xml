@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- Cara asco -->
+    <path android:fillColor="#C8E6C9"
+        android:pathData="M48,8 A40,40 0 1,1 47.99,8 Z"/>
+    <!-- Ojos entrecerrados -->
+    <path android:strokeColor="#212121" android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M30,38 L38,36"/>
+    <path android:strokeColor="#212121" android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M58,36 L66,38"/>
+    <!-- Boca de asco (ondulada) -->
+    <path android:strokeColor="#212121" android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M32,60 Q40,54 48,60 Q56,66 64,60"/>
+    <!-- Lengua fuera -->
+    <path android:fillColor="#EF9A9A"
+        android:pathData="M44,60 Q48,68 52,60 Z"/>
+</vector>

@@ -15,12 +15,17 @@
     <string name="settings_robot_name_saved">Nombre actualizado a: %s</string>
 
     <!-- Emociones -->
-    <string name="emotion_happy">Feliz</string>
-    <string name="emotion_sad">Triste</string>
-    <string name="emotion_angry">Enfadado</string>
-    <string name="emotion_surprised">Sorprendido</string>
-    <string name="emotion_scared">Asustado</string>
-    <string name="emotion_question">¿Cómo se siente?</string>
+    <string name="emotion_happy">Felicidad</string>
+    <string name="emotion_sad">Tristeza</string>
+    <string name="emotion_angry">Enfado</string>
+    <string name="emotion_surprised">Sorpresa</string>
+    <string name="emotion_scared">Miedo</string>
+    <string name="emotion_disgusted">Asco</string>
+    <string name="emotion_calm">Calma</string>
+    <string name="emotion_love">Amor</string>
+    <string name="emotion_question">¿Cuál es igual?</string>
+    <string name="emotion_completed">¡Completado!</string>
+    <string name="emotion_progress">Ronda %1$d de %2$d</string>
 
     <!-- Actividad social -->
     <string name="social_option_a">Opción A</string>
