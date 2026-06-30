@@ -43,6 +43,9 @@ public class AppConstants {
     public static final String ACTION_SESSION_RESUME = "com.example.approbot.ACTION_SESSION_RESUME";
     public static final String ACTION_TURN_SIGNAL    = "com.example.approbot.ACTION_TURN_SIGNAL";
 
+    // Seguridad: broadcast para notificar tilt a Activities activas
+    public static final String ACTION_TILT_ALERT = "com.example.approbot.ACTION_TILT_ALERT";
+
     // Persistencia de sesión activa
     public static final String PREF_ACTIVE_SESSION = "active_session";
 
@@ -68,4 +71,7 @@ public class AppConstants {
     public static final String MSG_BLOCKED         = "BLOCKED";
     public static final String MSG_DANCE           = "DANCE";
     public static final String MSG_DANCE_DONE      = "DANCE_DONE";
+
+    // Seguridad: detección de vuelco (MPU-6050)
+    public static final String MSG_TILT_ALERT      = "TILT_ALERT";
 }

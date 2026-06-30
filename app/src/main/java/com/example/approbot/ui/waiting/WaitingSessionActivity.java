@@ -31,6 +31,7 @@ import com.example.approbot.data.repository.RobotIdentityRepository;
 import com.example.approbot.network.RobotNetworkService;
 import com.example.approbot.network.RobotStatusReporter;
 import com.example.approbot.network.SessionNetworkHolder;
+import com.example.approbot.network.TcpServer;
 import com.example.approbot.ui.activities.CalmActivity;
 import com.example.approbot.ui.activities.EmotionActivity;
 import com.example.approbot.ui.activities.SequenceActivity;
@@ -465,6 +466,9 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             case AppConstants.MSG_BATTERY_STATUS:
                 handleBatteryStatus(m.payload);
                 break;
+            case AppConstants.MSG_TILT_ALERT:
+                handleTiltAlert();
+                break;
             default:
                 break;
         }
@@ -497,6 +501,41 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         } catch (NumberFormatException e) {
             Log.w(TAG, "BATTERY_STATUS con valor no numerico ignorado: " + payload);
         }
+    }
+
+    /**
+     * El robot ha detectado un vuelco (inclinación > 45°). Acciones:
+     * 1. Enviar STOP al Arduino como refuerzo de seguridad.
+     * 2. Reenviar TILT_ALERT al terapeuta vía TCP con el robotId.
+     * 3. Notificar a la Activity de actividad activa vía LocalBroadcast.
+     */
+    private void handleTiltAlert() {
+        Log.w(TAG, "TILT_ALERT recibido: robot inclinado, deteniendo motores");
+
+        // 1. Enviar STOP al Arduino como refuerzo
+        bluetoothRobotManager.send(new RobotMessage(AppConstants.MSG_STOP, null));
+
+        // 2. Reenviar al terapeuta vía TCP
+        if (serviceBound && networkService != null) {
+            TcpServer tcp = networkService.getTcpServer();
+            if (tcp != null) {
+                try {
+                    String robotId = identityRepository.getRobotName("Robot-1");
+                    JSONObject payload = new JSONObject();
+                    payload.put("robotId", robotId);
+                    JSONObject msg = new JSONObject();
+                    msg.put("type", AppConstants.MSG_TILT_ALERT);
+                    msg.put("payload", payload.toString());
+                    tcp.sendToClient(msg.toString());
+                } catch (JSONException e) {
+                    Log.e(TAG, "Error construyendo TILT_ALERT para TCP", e);
+                }
+            }
+        }
+
+        // 3. Notificar a la Activity activa vía LocalBroadcast
+        LocalBroadcastManager.getInstance(this)
+                .sendBroadcast(new Intent(AppConstants.ACTION_TILT_ALERT));
     }
 
     private void startBluetoothConnection() {
