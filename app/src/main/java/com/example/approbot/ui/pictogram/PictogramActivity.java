@@ -18,9 +18,11 @@ import com.example.approbot.R;
 import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.RobotStatusReporter;
 import com.example.approbot.network.SessionNetworkHolder;
+import com.example.approbot.ui.activities.CalmOverlayFragment;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.PictogramViewModel;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -37,7 +39,9 @@ public class PictogramActivity extends AppCompatActivity {
     private GridLayout gridPictograms;
     private LinearLayout layoutConfirmation;
     private TextView tvFeedback;
+    private FloatingActionButton fabCalm;
 
+    private StudentProfile studentProfile;
     private final BackgroundSoundPlayer soundPlayer = new BackgroundSoundPlayer();
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
@@ -63,20 +67,20 @@ public class PictogramActivity extends AppCompatActivity {
         gridPictograms     = findViewById(R.id.gridPictograms);
         layoutConfirmation = findViewById(R.id.layoutConfirmation);
         tvFeedback         = findViewById(R.id.tvFeedback);
+        fabCalm            = findViewById(R.id.fabCalm);
 
-        StudentProfile profile = null;
         String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
         if (profileJson != null) {
-            try { profile = StudentProfile.fromJson(new JSONObject(profileJson)); }
+            try { studentProfile = StudentProfile.fromJson(new JSONObject(profileJson)); }
             catch (JSONException ignored) {}
         }
 
-        if (profile != null && profile.backgroundSoundResName != null)
-            soundPlayer.play(this, profile.backgroundSoundResName);
+        if (studentProfile != null && studentProfile.backgroundSoundResName != null)
+            soundPlayer.play(this, studentProfile.backgroundSoundResName);
 
         viewModel = new ViewModelProvider(this).get(PictogramViewModel.class);
         viewModel.init(SessionNetworkHolder.getTcpServer(),
-                SessionNetworkHolder.getBluetoothManager(), profile);
+                SessionNetworkHolder.getBluetoothManager(), studentProfile);
 
         ArrayList<String> pictograms = getIntent().getStringArrayListExtra(EXTRA_PICTOGRAMS);
         if (pictograms == null || pictograms.isEmpty()) { finish(); return; }
@@ -105,6 +109,9 @@ public class PictogramActivity extends AppCompatActivity {
                 tvFeedback.setVisibility(View.VISIBLE);
             }
         });
+
+        // FAB de calma
+        fabCalm.setOnClickListener(v -> openCalmOverlay());
 
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
@@ -137,7 +144,16 @@ public class PictogramActivity extends AppCompatActivity {
 
     public PictogramViewModel getViewModel() { return viewModel; }
 
+    private void openCalmOverlay() {
+        if (getSupportFragmentManager().findFragmentByTag(CalmOverlayFragment.TAG) != null) return;
+        String calmType = studentProfile != null ? studentProfile.calmType : StudentProfile.DEFAULT_CALM_TYPE;
+        String soundRes = studentProfile != null ? studentProfile.backgroundSoundResName : null;
+        CalmOverlayFragment.newInstance(calmType, soundRes)
+                .show(getSupportFragmentManager(), CalmOverlayFragment.TAG);
+    }
+
     private void showPauseOverlay() {
+        fabCalm.setVisibility(View.GONE);
         if (getSupportFragmentManager().findFragmentByTag(PauseOverlayFragment.TAG) != null) return;
         getSupportFragmentManager().beginTransaction()
                 .add(android.R.id.content, new PauseOverlayFragment(), PauseOverlayFragment.TAG)
@@ -145,6 +161,7 @@ public class PictogramActivity extends AppCompatActivity {
     }
 
     private void hidePauseOverlay() {
+        fabCalm.setVisibility(View.VISIBLE);
         androidx.fragment.app.Fragment overlay =
                 getSupportFragmentManager().findFragmentByTag(PauseOverlayFragment.TAG);
         if (overlay != null) {

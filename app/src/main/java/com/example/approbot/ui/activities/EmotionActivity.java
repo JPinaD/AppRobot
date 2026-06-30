@@ -22,9 +22,13 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.approbot.R;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.EmotionViewModel;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,10 +37,10 @@ import java.util.Locale;
 /**
  * Activity de Reconocimiento Emocional.
  *
- * Feedback estandarizado TEA:
- * - Acierto: fondo verde + CELEBRATE → CELEBRATE_DONE → MOVE_TIMED → MOVE_DONE → siguiente
+ * Feedback para actividades con casillas:
+ * - Acierto: fondo verde + MOVE_TIMED FORWARD (avanza casilla) → MOVE_DONE → siguiente
+ * - Último acierto: MOVE_TIMED FORWARD → MOVE_DONE → DANCE → DANCE_DONE → felicitación
  * - Fallo: sin color negativo + DENY → DENY_DONE → reintento
- * - Completitud: DANCE → DANCE_DONE → pantalla de felicitación
  */
 public class EmotionActivity extends AppCompatActivity {
 
@@ -49,7 +53,6 @@ public class EmotionActivity extends AppCompatActivity {
     private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
 
     // Timeout de seguridad: si no llega DONE del Arduino, avanzar igualmente
-    private static final long CELEBRATE_TIMEOUT_MS = 3000;
     private static final long MOVE_TIMEOUT_MS = 2500;
     private static final long DENY_TIMEOUT_MS = 2500;
     private static final long DANCE_TIMEOUT_MS = 5000;
@@ -62,14 +65,16 @@ public class EmotionActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private TextView tvQuestion;
 
+    private StudentProfile studentProfile;
+    private CalmFabHelper calmFabHelper;
+
     private TextToSpeech tts;
     private boolean ttsReady = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // --- Runnables de timeout (por si no llega el DONE del Arduino) ---
-    private final Runnable celebrateTimeout = () -> viewModel.onCelebrateDone();
-    private final Runnable moveTimeout = () -> viewModel.onMoveDone();
-    private final Runnable denyTimeout = () -> viewModel.onDenyDone();
+    private final Runnable moveTimeout = () -> viewModel.advanceAfterCorrect();
+    private final Runnable denyTimeout = () -> viewModel.resetAfterWrong();
     private final Runnable danceTimeout = () -> viewModel.onDanceDone();
 
     // --- BroadcastReceivers ---
@@ -78,16 +83,21 @@ public class EmotionActivity extends AppCompatActivity {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
     private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(false); }
+        @Override public void onReceive(Context context, Intent intent) {
+            setOptionsEnabled(false);
+            if (calmFabHelper != null) calmFabHelper.hide();
+        }
     };
     private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(true); }
+        @Override public void onReceive(Context context, Intent intent) {
+            setOptionsEnabled(true);
+            if (calmFabHelper != null) calmFabHelper.show();
+        }
     };
 
     private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            handler.removeCallbacks(celebrateTimeout);
-            viewModel.onCelebrateDone();
+            // No-op for EmotionActivity — this activity does not send CELEBRATE
         }
     };
     private final BroadcastReceiver moveDoneReceiver = new BroadcastReceiver() {
@@ -126,6 +136,16 @@ public class EmotionActivity extends AppCompatActivity {
 
         buildLayout();
 
+        // Parse student profile for calm FAB
+        String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
+        if (profileJson != null) {
+            try { studentProfile = StudentProfile.fromJson(new JSONObject(profileJson)); }
+            catch (JSONException ignored) {}
+        }
+
+        // Attach calm FAB (uses android.R.id.content since root is LinearLayout)
+        calmFabHelper = CalmFabHelper.attachToContent(this, studentProfile);
+
         viewModel = new ViewModelProvider(this).get(EmotionViewModel.class);
         viewModel.init(SessionNetworkHolder.getTcpServer(),
                 SessionNetworkHolder.getBluetoothManager(), sessionId, items, steps);
@@ -139,18 +159,29 @@ public class EmotionActivity extends AppCompatActivity {
 
         viewModel.getState().observe(this, state -> {
             switch (state) {
-                case CORRECT:
-                    // Feedback visual de acierto: fondo verde suave
+                case CORRECT_ADVANCING:
+                    // Acierto: fondo verde, opciones deshabilitadas, robot avanzando
                     root.setBackgroundColor(COLOR_CORRECT);
                     setOptionsEnabled(false);
-                    // Timeout de seguridad por si no llega CELEBRATE_DONE
-                    handler.postDelayed(celebrateTimeout, CELEBRATE_TIMEOUT_MS);
+                    handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
-                case CORRECT_ADVANCING:
-                    // Robot avanzando casilla (MOVE_TIMED enviado)
-                    // Timeout de seguridad por si no llega MOVE_DONE
+                case COMPLETING:
+                    // Última casilla avanzando (MOVE_TIMED enviado, espera MOVE_DONE para DANCE)
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    setOptionsEnabled(false);
                     handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
+                    break;
+
+                case DANCING:
+                    // DANCE enviado tras última casilla, esperando DANCE_DONE
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    setOptionsEnabled(false);
+                    tvQuestion.setText(R.string.emotion_completed);
+                    tvQuestion.setTextSize(28f);
+                    gridOptions.removeAllViews();
+                    ivExample.setVisibility(View.GONE);
+                    handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
                     break;
 
                 case WRONG:
@@ -164,17 +195,6 @@ public class EmotionActivity extends AppCompatActivity {
                     root.setBackgroundColor(COLOR_NEUTRAL);
                     showRound();
                     setOptionsEnabled(true);
-                    break;
-
-                case COMPLETING:
-                    // DANCE enviado, esperando DANCE_DONE
-                    root.setBackgroundColor(COLOR_CORRECT);
-                    setOptionsEnabled(false);
-                    tvQuestion.setText(R.string.emotion_completed);
-                    tvQuestion.setTextSize(28f);
-                    gridOptions.removeAllViews();
-                    ivExample.setVisibility(View.GONE);
-                    handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
                     break;
 
                 case COMPLETED:

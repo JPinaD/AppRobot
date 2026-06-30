@@ -23,17 +23,17 @@ import java.util.List;
 /**
  * ViewModel para la actividad de Escenarios Sociales.
  *
- * Feedback estandarizado TEA:
- * - Acierto: CELEBRATE → esperar CELEBRATE_DONE → MOVE_TIMED FORWARD (avance casilla)
- * - Fallo: DENY (oscilación servo, sin movimiento) + muestra respuesta correcta
- * - Completitud: DANCE → esperar DANCE_DONE → pantalla completada
+ * Feedback para actividades con casillas:
+ * - Acierto: MOVE_TIMED FORWARD (avanza casilla). Sin CELEBRATE.
+ * - Último acierto: MOVE_TIMED FORWARD + esperar MOVE_DONE + DANCE (celebración de final).
+ * - Fallo: DENY (oscilación servo, sin movimiento) + muestra respuesta correcta.
  */
 public class SocialViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "SocialViewModel";
     private static final int TOTAL_SQUARES = 5;
 
-    public enum State { SHOWING, CORRECT, CORRECT_ADVANCING, WRONG, COMPLETING, COMPLETED }
+    public enum State { SHOWING, CORRECT_ADVANCING, WRONG, COMPLETING, DANCING, COMPLETED }
 
     public static class UiState {
         public final State state;
@@ -79,8 +79,9 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
 
     /**
      * Alumno selecciona una opción.
-     * - Acierto: envía CELEBRATE, transiciona a CORRECT
-     * - Fallo: envía DENY, transiciona a WRONG
+     * - Acierto: envía MOVE_TIMED FORWARD directamente (sin CELEBRATE).
+     *   Si es la última casilla, pasa a COMPLETING (espera MOVE_DONE para DANCE).
+     * - Fallo: envía DENY, transiciona a WRONG.
      */
     public void onOptionSelected(String option) {
         if (currentScenario == null) return;
@@ -92,12 +93,20 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
 
         if (correct) {
             currentSquare++;
-            // Enviar CELEBRATE (feedback estandarizado: acierto = CELEBRATE)
-            sendCelebrate();
-            uiState.postValue(new UiState(State.CORRECT, currentScenario,
-                    selectedOutcome, null, currentSquare));
+
+            if (currentSquare >= TOTAL_SQUARES) {
+                // Última casilla: avanzar y luego DANCE
+                sendMoveTimed("FORWARD", 600);
+                uiState.postValue(new UiState(State.COMPLETING, currentScenario,
+                        selectedOutcome, null, currentSquare));
+            } else {
+                // Casilla normal: solo avanzar
+                sendMoveTimed("FORWARD", 600);
+                uiState.postValue(new UiState(State.CORRECT_ADVANCING, currentScenario,
+                        selectedOutcome, null, currentSquare));
+            }
         } else {
-            // Enviar DENY (feedback estandarizado: fallo = DENY)
+            // Fallo: DENY
             sendDeny();
             String correctOptionText = "A".equals(currentScenario.correctOption)
                     ? currentScenario.optionA : currentScenario.optionB;
@@ -107,35 +116,22 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     }
 
     /**
-     * Llamado cuando se recibe CELEBRATE_DONE del Arduino.
-     * Si no es la última casilla: envía MOVE_TIMED FORWARD.
-     * Si es la última: envía DANCE.
-     */
-    public void onCelebrateDone() {
-        UiState current = uiState.getValue();
-        if (current == null || current.state != State.CORRECT) return;
-
-        if (currentSquare >= TOTAL_SQUARES) {
-            // Completitud: enviar DANCE
-            sendDance();
-            uiState.postValue(new UiState(State.COMPLETING, current.scenario,
-                    current.feedbackText, null, currentSquare));
-        } else {
-            // Avanzar casilla
-            sendMoveTimed("FORWARD", 600);
-            uiState.postValue(new UiState(State.CORRECT_ADVANCING, current.scenario,
-                    current.feedbackText, null, currentSquare));
-        }
-    }
-
-    /**
      * Llamado cuando se recibe MOVE_DONE del Arduino (tras avance de casilla).
-     * Carga el siguiente escenario.
+     * Si estábamos en COMPLETING (última casilla): envía DANCE.
+     * Si estábamos en CORRECT_ADVANCING (casilla normal): carga siguiente escenario.
      */
     public void onMoveDone() {
         UiState current = uiState.getValue();
-        if (current == null || current.state != State.CORRECT_ADVANCING) return;
-        pickNextScenario();
+        if (current == null) return;
+
+        if (current.state == State.CORRECT_ADVANCING) {
+            pickNextScenario();
+        } else if (current.state == State.COMPLETING) {
+            // Casilla final avanzada, ahora celebrar con DANCE
+            sendDance();
+            uiState.postValue(new UiState(State.DANCING, current.scenario,
+                    current.feedbackText, null, currentSquare));
+        }
     }
 
     /**
@@ -144,7 +140,7 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
      */
     public void onDanceDone() {
         UiState current = uiState.getValue();
-        if (current == null || current.state != State.COMPLETING) return;
+        if (current == null || current.state != State.DANCING) return;
         uiState.postValue(new UiState(State.COMPLETED, current.scenario,
                 null, null, currentSquare));
     }
@@ -160,16 +156,16 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     }
 
     /**
-     * Fallback: si no llega CELEBRATE_DONE a tiempo (BT inestable),
+     * Fallback: si no llega MOVE_DONE/DANCE_DONE a tiempo (BT inestable),
      * la Activity llama este método para forzar avance.
      */
     public void advanceToNext() {
         UiState current = uiState.getValue();
         if (current == null) return;
-        if (current.state == State.CORRECT) {
-            onCelebrateDone();
-        } else if (current.state == State.CORRECT_ADVANCING) {
+        if (current.state == State.CORRECT_ADVANCING || current.state == State.COMPLETING) {
             onMoveDone();
+        } else if (current.state == State.DANCING) {
+            onDanceDone();
         }
     }
 
@@ -208,11 +204,6 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
         } catch (JSONException e) {
             Log.e(TAG, "Error enviando resultado", e);
         }
-    }
-
-    private void sendCelebrate() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
     }
 
     private void sendMoveTimed(String dir, int ms) {

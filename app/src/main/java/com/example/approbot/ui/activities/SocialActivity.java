@@ -19,17 +19,21 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.approbot.data.model.SessionConfig;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.SocialViewModel;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * Activity de Escenarios Sociales.
  *
- * Feedback estandarizado TEA:
- * - Acierto: fondo verde + CELEBRATE → CELEBRATE_DONE → MOVE_TIMED → MOVE_DONE → siguiente
+ * Feedback para actividades con casillas:
+ * - Acierto: fondo verde + MOVE_TIMED FORWARD (avanza casilla) → MOVE_DONE → siguiente
+ * - Último acierto: MOVE_TIMED FORWARD → MOVE_DONE → DANCE → DANCE_DONE → felicitación
  * - Fallo: sin color rojo negativo + DENY → DENY_DONE → nuevo escenario
- * - Completitud: DANCE → DANCE_DONE → pantalla de felicitación
  */
 public class SocialActivity extends AppCompatActivity {
 
@@ -41,7 +45,6 @@ public class SocialActivity extends AppCompatActivity {
     private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
 
     // Timeouts de seguridad por si no llega DONE del Arduino
-    private static final long CELEBRATE_TIMEOUT_MS = 3000;
     private static final long MOVE_TIMEOUT_MS = 2500;
     private static final long DENY_TIMEOUT_MS = 2500;
     private static final long DANCE_TIMEOUT_MS = 5000;
@@ -56,12 +59,14 @@ public class SocialActivity extends AppCompatActivity {
     private TextView tvFeedback;
     private TextView tvCorrectHint;
 
+    private StudentProfile studentProfile;
+    private CalmFabHelper calmFabHelper;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // --- Runnables de timeout ---
-    private final Runnable celebrateTimeout = () -> viewModel.onCelebrateDone();
-    private final Runnable moveTimeout = () -> viewModel.onMoveDone();
-    private final Runnable denyTimeout = () -> viewModel.onDenyDone();
+    private final Runnable moveTimeout = () -> viewModel.advanceToNext();
+    private final Runnable denyTimeout = () -> viewModel.retryAfterWrong();
     private final Runnable danceTimeout = () -> viewModel.onDanceDone();
 
     // --- BroadcastReceivers ---
@@ -70,16 +75,21 @@ public class SocialActivity extends AppCompatActivity {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
     private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(false); }
+        @Override public void onReceive(Context context, Intent intent) {
+            setOptionsEnabled(false);
+            if (calmFabHelper != null) calmFabHelper.hide();
+        }
     };
     private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(true); }
+        @Override public void onReceive(Context context, Intent intent) {
+            setOptionsEnabled(true);
+            if (calmFabHelper != null) calmFabHelper.show();
+        }
     };
 
     private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            handler.removeCallbacks(celebrateTimeout);
-            viewModel.onCelebrateDone();
+            // No-op for SocialActivity — this activity does not send CELEBRATE
         }
     };
     private final BroadcastReceiver moveDoneReceiver = new BroadcastReceiver() {
@@ -112,6 +122,14 @@ public class SocialActivity extends AppCompatActivity {
 
         buildLayout();
 
+        // Parse student profile for calm FAB
+        String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
+        if (profileJson != null) {
+            try { studentProfile = StudentProfile.fromJson(new JSONObject(profileJson)); }
+            catch (JSONException ignored) {}
+        }
+        calmFabHelper = CalmFabHelper.attachToContent(this, studentProfile);
+
         viewModel = new ViewModelProvider(this).get(SocialViewModel.class);
         viewModel.init(SessionNetworkHolder.getTcpServer(),
                 SessionNetworkHolder.getBluetoothManager(), sessionId, config.socialScenarios);
@@ -140,19 +158,13 @@ public class SocialActivity extends AppCompatActivity {
                     tvCorrectHint.setVisibility(android.view.View.GONE);
                     break;
 
-                case CORRECT:
-                    // Feedback visual de acierto: fondo verde suave
+                case CORRECT_ADVANCING:
+                    // Acierto: fondo verde, robot avanzando casilla
                     root.setBackgroundColor(COLOR_CORRECT);
                     setOptionsEnabled(false);
                     tvFeedback.setText(state.feedbackText);
                     tvFeedback.setVisibility(android.view.View.VISIBLE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
-                    // Timeout de seguridad por si no llega CELEBRATE_DONE
-                    handler.postDelayed(celebrateTimeout, CELEBRATE_TIMEOUT_MS);
-                    break;
-
-                case CORRECT_ADVANCING:
-                    // Robot avanzando casilla, mantener fondo verde
                     handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
@@ -170,6 +182,16 @@ public class SocialActivity extends AppCompatActivity {
                     break;
 
                 case COMPLETING:
+                    // Última casilla avanzando (MOVE_TIMED enviado, espera MOVE_DONE para DANCE)
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    setOptionsEnabled(false);
+                    tvFeedback.setText(state.feedbackText);
+                    tvFeedback.setVisibility(android.view.View.VISIBLE);
+                    tvCorrectHint.setVisibility(android.view.View.GONE);
+                    handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
+                    break;
+
+                case DANCING:
                     // DANCE enviado, esperando DANCE_DONE
                     root.setBackgroundColor(COLOR_CORRECT);
                     tvDescription.setText("¡Actividad completada!");

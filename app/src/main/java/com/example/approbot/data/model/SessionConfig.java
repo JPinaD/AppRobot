@@ -103,6 +103,7 @@ public class SessionConfig {
                 profileObj.put("excludedColors", colors);
                 if (studentProfile.backgroundSoundResName != null)
                     profileObj.put("backgroundSoundResName", studentProfile.backgroundSoundResName);
+                profileObj.put("calmType", studentProfile.calmType);
                 obj.put("studentProfile", profileObj);
             }
             if (!activityItems.isEmpty() || sequenceLength > 0 || !socialScenarios.isEmpty()) {

@@ -22,10 +22,10 @@ import java.util.List;
 /**
  * ViewModel para la actividad de Reconocimiento Emocional.
  *
- * Feedback estandarizado TEA:
- * - Acierto: CELEBRATE → esperar CELEBRATE_DONE → MOVE_TIMED FORWARD (avance casilla)
- * - Fallo: DENY (sin movimiento de motores)
- * - Completitud: DANCE → esperar DANCE_DONE → mostrar pantalla completada
+ * Feedback para actividades con casillas:
+ * - Acierto: MOVE_TIMED FORWARD (avanza una casilla). Sin CELEBRATE.
+ * - Último acierto: MOVE_TIMED FORWARD + esperar MOVE_DONE + DANCE (celebración de final).
+ * - Fallo: DENY (oscilación servo, sin movimiento de motores).
  */
 public class EmotionViewModel extends ViewModel implements ActivityStatusProvider {
 
@@ -33,10 +33,10 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
 
     public enum State {
         SHOWING,           // Mostrando opciones, esperando input del alumno
-        CORRECT,           // Acierto: celebrando (CELEBRATE enviado)
-        CORRECT_ADVANCING, // Avanzando casilla (MOVE_TIMED enviado tras CELEBRATE_DONE)
+        CORRECT_ADVANCING, // Acierto: avanzando casilla (MOVE_TIMED enviado)
         WRONG,             // Fallo: DENY enviado
-        COMPLETING,        // Actividad completada: DANCE enviado, esperando DANCE_DONE
+        COMPLETING,        // Último acierto: MOVE_TIMED enviado, esperando MOVE_DONE para enviar DANCE
+        DANCING,           // DANCE enviado, esperando DANCE_DONE
         COMPLETED          // Fin: DANCE_DONE recibido, mostrar felicitación
     }
 
@@ -85,8 +85,9 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
 
     /**
      * Alumno selecciona una opción.
-     * - Acierto: envía CELEBRATE, transiciona a CORRECT (espera CELEBRATE_DONE)
-     * - Fallo: envía DENY, transiciona a WRONG
+     * - Acierto: envía MOVE_TIMED FORWARD directamente (sin CELEBRATE).
+     *   Si es la última ronda, pasa a estado COMPLETING (espera MOVE_DONE para enviar DANCE).
+     * - Fallo: envía DENY, transiciona a WRONG.
      */
     public void onOptionSelected(String selectedId) {
         boolean correct = selectedId.equals(correctEmotionId);
@@ -95,8 +96,16 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
         if (correct) {
             currentRound++;
             progress.postValue(currentRound);
-            state.postValue(State.CORRECT);
-            sendCelebrate();
+
+            if (currentRound >= totalRounds) {
+                // Última ronda: avanzar casilla y luego DANCE
+                state.postValue(State.COMPLETING);
+                sendMoveTimed("FORWARD", 600);
+            } else {
+                // Ronda normal: solo avanzar casilla
+                state.postValue(State.CORRECT_ADVANCING);
+                sendMoveTimed("FORWARD", 600);
+            }
         } else {
             state.postValue(State.WRONG);
             sendDeny();
@@ -104,32 +113,20 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
     }
 
     /**
-     * Llamado cuando se recibe CELEBRATE_DONE del Arduino.
-     * Si quedan rondas: envía MOVE_TIMED FORWARD para avanzar casilla.
-     * Si era la última ronda: envía DANCE para celebrar completitud.
-     */
-    public void onCelebrateDone() {
-        if (state.getValue() != State.CORRECT) return;
-
-        if (currentRound >= totalRounds) {
-            // Actividad completada: enviar DANCE
-            state.postValue(State.COMPLETING);
-            sendDance();
-        } else {
-            // Avanzar casilla
-            state.postValue(State.CORRECT_ADVANCING);
-            sendMoveTimed("FORWARD", 600);
-        }
-    }
-
-    /**
      * Llamado cuando se recibe MOVE_DONE del Arduino (tras avance de casilla).
-     * Carga la siguiente emoción.
+     * Si estábamos en COMPLETING (última ronda): envía DANCE.
+     * Si estábamos en CORRECT_ADVANCING (ronda normal): carga siguiente emoción.
      */
     public void onMoveDone() {
-        if (state.getValue() != State.CORRECT_ADVANCING) return;
-        pickNextEmotion();
-        state.postValue(State.SHOWING);
+        State current = state.getValue();
+        if (current == State.CORRECT_ADVANCING) {
+            pickNextEmotion();
+            state.postValue(State.SHOWING);
+        } else if (current == State.COMPLETING) {
+            // Casilla final avanzada, ahora celebrar con DANCE
+            state.postValue(State.DANCING);
+            sendDance();
+        }
     }
 
     /**
@@ -137,7 +134,7 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
      * Transiciona a COMPLETED para mostrar pantalla de felicitación.
      */
     public void onDanceDone() {
-        if (state.getValue() != State.COMPLETING) return;
+        if (state.getValue() != State.DANCING) return;
         state.postValue(State.COMPLETED);
     }
 
@@ -156,10 +153,10 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
      */
     public void advanceAfterCorrect() {
         State current = state.getValue();
-        if (current == State.CORRECT) {
-            onCelebrateDone();
-        } else if (current == State.CORRECT_ADVANCING) {
+        if (current == State.CORRECT_ADVANCING || current == State.COMPLETING) {
             onMoveDone();
+        } else if (current == State.DANCING) {
+            onDanceDone();
         }
     }
 
@@ -208,11 +205,6 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
         } catch (JSONException e) {
             Log.e(TAG, "Error enviando resultado", e);
         }
-    }
-
-    private void sendCelebrate() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
     }
 
     private void sendDeny() {

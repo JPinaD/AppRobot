@@ -19,9 +19,13 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.approbot.R;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.SequenceViewModel;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +60,8 @@ public class SequenceActivity extends AppCompatActivity {
     private LinearLayout layoutSequence;
     private LinearLayout layoutOptions;
     private LinearLayout root;
+    private StudentProfile studentProfile;
+    private CalmFabHelper calmFabHelper;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // --- Runnables de timeout ---
@@ -70,10 +76,16 @@ public class SequenceActivity extends AppCompatActivity {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
     private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { setInputEnabled(false); }
+        @Override public void onReceive(Context context, Intent intent) {
+            setInputEnabled(false);
+            if (calmFabHelper != null) calmFabHelper.hide();
+        }
     };
     private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { setInputEnabled(true); }
+        @Override public void onReceive(Context context, Intent intent) {
+            setInputEnabled(true);
+            if (calmFabHelper != null) calmFabHelper.show();
+        }
     };
 
     private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
@@ -104,6 +116,14 @@ public class SequenceActivity extends AppCompatActivity {
         int seqLength = getIntent().getIntExtra(EXTRA_SEQUENCE_LENGTH, 2);
 
         buildLayout();
+
+        // Parse student profile for calm FAB
+        String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
+        if (profileJson != null) {
+            try { studentProfile = StudentProfile.fromJson(new JSONObject(profileJson)); }
+            catch (JSONException ignored) {}
+        }
+        calmFabHelper = CalmFabHelper.attachToContent(this, studentProfile);
 
         viewModel = new ViewModelProvider(this).get(SequenceViewModel.class);
         viewModel.init(SessionNetworkHolder.getTcpServer(),

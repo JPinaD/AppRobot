@@ -17,17 +17,23 @@ public class StudentProfile {
 
     private static final String TAG = "StudentProfile";
 
+    /** Tipo de calma por defecto si no se configura en el perfil. */
+    public static final String DEFAULT_CALM_TYPE = "calm_breathing";
+
     public final String id;
     public final String name;
     public final List<String> excludedColors;   // hex en mayúsculas, ej: "#C8E6C9"
     public final String backgroundSoundResName; // nombre de recurso raw, o null
+    public final String calmType;               // "calm_breathing", "calm_colors", "calm_music", "calm_counting"
 
     public StudentProfile(String id, String name,
-                          List<String> excludedColors, String backgroundSoundResName) {
+                          List<String> excludedColors, String backgroundSoundResName,
+                          String calmType) {
         this.id = id;
         this.name = name;
         this.excludedColors = excludedColors != null ? excludedColors : new ArrayList<>();
         this.backgroundSoundResName = backgroundSoundResName;
+        this.calmType = (calmType != null && !calmType.isEmpty()) ? calmType : DEFAULT_CALM_TYPE;
     }
 
     /**
@@ -51,7 +57,9 @@ public class StudentProfile {
                     ? obj.optString("backgroundSoundResName", null)
                     : null;
 
-            return new StudentProfile(id, name, colors, sound);
+            String calmType = obj.optString("calmType", DEFAULT_CALM_TYPE);
+
+            return new StudentProfile(id, name, colors, sound, calmType);
         } catch (JSONException e) {
             Log.w(TAG, "Error parseando StudentProfile: " + e.getMessage());
             return null;

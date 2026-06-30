@@ -459,38 +459,46 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     @Override
     public void onMessageReceived(RobotMessage m) {
         Log.d(TAG, "BT: " + m.type);
-        switch (m.type) {
-            case AppConstants.MSG_PONG:
-                runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_verified)));
-                break;
-            case AppConstants.MSG_BATTERY_STATUS:
-                handleBatteryStatus(m.payload);
-                break;
-            case AppConstants.MSG_TILT_ALERT:
-                handleTiltAlert();
-                break;
-            case AppConstants.MSG_CELEBRATE_DONE:
-                LocalBroadcastManager.getInstance(this)
-                        .sendBroadcast(new Intent(AppConstants.ACTION_CELEBRATE_DONE));
-                break;
-            case AppConstants.MSG_DENY_DONE:
-                LocalBroadcastManager.getInstance(this)
-                        .sendBroadcast(new Intent(AppConstants.ACTION_DENY_DONE));
-                break;
-            case AppConstants.MSG_MOVE_DONE:
-                LocalBroadcastManager.getInstance(this)
-                        .sendBroadcast(new Intent(AppConstants.ACTION_MOVE_DONE));
-                break;
-            case AppConstants.MSG_DANCE_DONE:
-                LocalBroadcastManager.getInstance(this)
-                        .sendBroadcast(new Intent(AppConstants.ACTION_DANCE_DONE));
-                break;
-            case AppConstants.MSG_BLOCKED:
-                LocalBroadcastManager.getInstance(this)
-                        .sendBroadcast(new Intent(AppConstants.ACTION_BLOCKED));
-                break;
-            default:
-                break;
+        // All BT messages arrive on the BT background thread.
+        // Dispatch broadcasts and UI work safely on the main thread to avoid
+        // ConcurrentModificationException in LocalBroadcastManager and
+        // CalledFromWrongThreadException on view updates.
+        try {
+            switch (m.type) {
+                case AppConstants.MSG_PONG:
+                    runOnUiThread(() -> tvBluetoothStatus.setText(getString(R.string.bt_status_verified)));
+                    break;
+                case AppConstants.MSG_BATTERY_STATUS:
+                    handleBatteryStatus(m.payload);
+                    break;
+                case AppConstants.MSG_TILT_ALERT:
+                    handleTiltAlert();
+                    break;
+                case AppConstants.MSG_CELEBRATE_DONE:
+                    runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
+                            .sendBroadcast(new Intent(AppConstants.ACTION_CELEBRATE_DONE)));
+                    break;
+                case AppConstants.MSG_DENY_DONE:
+                    runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
+                            .sendBroadcast(new Intent(AppConstants.ACTION_DENY_DONE)));
+                    break;
+                case AppConstants.MSG_MOVE_DONE:
+                    runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
+                            .sendBroadcast(new Intent(AppConstants.ACTION_MOVE_DONE)));
+                    break;
+                case AppConstants.MSG_DANCE_DONE:
+                    runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
+                            .sendBroadcast(new Intent(AppConstants.ACTION_DANCE_DONE)));
+                    break;
+                case AppConstants.MSG_BLOCKED:
+                    runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
+                            .sendBroadcast(new Intent(AppConstants.ACTION_BLOCKED)));
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error procesando mensaje BT: " + m.type, e);
         }
     }
 
@@ -527,19 +535,21 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
      * El robot ha detectado un vuelco (inclinación > 45°). Acciones:
      * 1. Enviar STOP al Arduino como refuerzo de seguridad.
      * 2. Reenviar TILT_ALERT al terapeuta vía TCP con el robotId.
-     * 3. Notificar a la Activity de actividad activa vía LocalBroadcast.
+     * 3. Notificar a la Activity de actividad activa vía LocalBroadcast (main thread).
      */
     private void handleTiltAlert() {
         Log.w(TAG, "TILT_ALERT recibido: robot inclinado, deteniendo motores");
 
-        // 1. Enviar STOP al Arduino como refuerzo
-        bluetoothRobotManager.send(new RobotMessage(AppConstants.MSG_STOP, null));
+        // 1. Enviar STOP al Arduino como refuerzo (safe from any thread)
+        if (bluetoothRobotManager != null) {
+            bluetoothRobotManager.send(new RobotMessage(AppConstants.MSG_STOP, null));
+        }
 
-        // 2. Reenviar al terapeuta vía TCP
+        // 2. Reenviar al terapeuta vía TCP (safe from any thread via executor)
         if (serviceBound && networkService != null) {
-            TcpServer tcp = networkService.getTcpServer();
-            if (tcp != null) {
-                try {
+            try {
+                TcpServer tcp = networkService.getTcpServer();
+                if (tcp != null) {
                     String robotId = identityRepository.getRobotName("Robot-1");
                     JSONObject payload = new JSONObject();
                     payload.put("robotId", robotId);
@@ -547,15 +557,15 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                     msg.put("type", AppConstants.MSG_TILT_ALERT);
                     msg.put("payload", payload.toString());
                     tcp.sendToClient(msg.toString());
-                } catch (JSONException e) {
-                    Log.e(TAG, "Error construyendo TILT_ALERT para TCP", e);
                 }
+            } catch (Exception e) {
+                Log.e(TAG, "Error construyendo TILT_ALERT para TCP", e);
             }
         }
 
-        // 3. Notificar a la Activity activa vía LocalBroadcast
-        LocalBroadcastManager.getInstance(this)
-                .sendBroadcast(new Intent(AppConstants.ACTION_TILT_ALERT));
+        // 3. Notificar a la Activity activa vía LocalBroadcast (MUST be main thread)
+        runOnUiThread(() -> LocalBroadcastManager.getInstance(WaitingSessionActivity.this)
+                .sendBroadcast(new Intent(AppConstants.ACTION_TILT_ALERT)));
     }
 
     private void startBluetoothConnection() {
@@ -599,6 +609,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             for (String c : p.excludedColors) colors.put(c);
             obj.put("excludedColors", colors);
             if (p.backgroundSoundResName != null) obj.put("backgroundSoundResName", p.backgroundSoundResName);
+            obj.put("calmType", p.calmType);
             return obj.toString();
         } catch (JSONException e) {
             return null;

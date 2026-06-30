@@ -19,6 +19,7 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.approbot.R;
+import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.TurnsViewModel;
@@ -43,10 +44,24 @@ public class TurnsActivity extends AppCompatActivity {
     private ImageView ivPictogram;
     private Button btnDone;
     private LinearLayout root;
+    private StudentProfile studentProfile;
+    private CalmFabHelper calmFabHelper;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
+    };
+
+    private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (calmFabHelper != null) calmFabHelper.hide();
+        }
+    };
+
+    private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (calmFabHelper != null) calmFabHelper.show();
+        }
     };
 
     private final BroadcastReceiver turnSignalReceiver = new BroadcastReceiver() {
@@ -69,6 +84,14 @@ public class TurnsActivity extends AppCompatActivity {
         ArrayList<String> items = getIntent().getStringArrayListExtra(EXTRA_ITEMS);
 
         buildLayout();
+
+        // Parse student profile for calm FAB
+        String profileJson = getIntent().getStringExtra(EXTRA_STUDENT_PROFILE);
+        if (profileJson != null) {
+            try { studentProfile = StudentProfile.fromJson(new JSONObject(profileJson)); }
+            catch (JSONException ignored) {}
+        }
+        calmFabHelper = CalmFabHelper.attachToContent(this, studentProfile);
 
         viewModel = new ViewModelProvider(this).get(TurnsViewModel.class);
         viewModel.init(SessionNetworkHolder.getTcpServer(),
@@ -115,6 +138,8 @@ public class TurnsActivity extends AppCompatActivity {
 
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
+        lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
         lbm.registerReceiver(turnSignalReceiver, new IntentFilter(AppConstants.ACTION_TURN_SIGNAL));
 
         // In solo mode, start first turn after a brief delay
@@ -127,6 +152,8 @@ public class TurnsActivity extends AppCompatActivity {
         handler.removeCallbacksAndMessages(null);
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.unregisterReceiver(sessionEndReceiver);
+        lbm.unregisterReceiver(pauseReceiver);
+        lbm.unregisterReceiver(resumeReceiver);
         lbm.unregisterReceiver(turnSignalReceiver);
     }
 

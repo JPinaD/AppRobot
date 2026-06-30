@@ -19,4 +19,11 @@
     <color name="tea_card_bg">#FFFFFF</color>
     <color name="tea_divider">#E0E0E0</color>
     <color name="tea_border">#BDBDBD</color>
+
+    <!-- Colores para experiencias de calma -->
+    <color name="calm_color_1">#E3F2FD</color>
+    <color name="calm_color_2">#F3E5F5</color>
+    <color name="calm_color_3">#E8F5E9</color>
+    <color name="calm_color_4">#FFF8E1</color>
+    <color name="calm_fab_bg">#4A90D9</color>
 </resources>
