@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -25,6 +26,14 @@ import com.example.approbot.viewmodel.SequenceViewModel;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Activity de Secuencias Visuales.
+ *
+ * Feedback estandarizado TEA:
+ * - Acierto: fondo verde + CELEBRATE → CELEBRATE_DONE → ejecución física bonus → siguiente
+ * - Fallo: sin color rojo + DENY → DENY_DONE → reintento (muestra misma secuencia)
+ * - Completitud (3 secuencias correctas): DANCE → DANCE_DONE → pantalla felicitación
+ */
 public class SequenceActivity extends AppCompatActivity {
 
     public static final String EXTRA_SESSION_ID      = "session_id";
@@ -36,15 +45,54 @@ public class SequenceActivity extends AppCompatActivity {
     private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
     private static final long SHOW_STEP_DELAY = 1200;
 
+    // Timeouts de seguridad por si no llega DONE del Arduino
+    private static final long CELEBRATE_TIMEOUT_MS = 3000;
+    private static final long DENY_TIMEOUT_MS = 2500;
+    private static final long DANCE_TIMEOUT_MS = 5000;
+
     private SequenceViewModel viewModel;
     private TextView tvInstruction;
+    private TextView tvProgress;
     private LinearLayout layoutSequence;
     private LinearLayout layoutOptions;
     private LinearLayout root;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    // --- Runnables de timeout ---
+    private final Runnable celebrateTimeout = () -> viewModel.onCelebrateDone();
+    private final Runnable denyTimeout = () -> viewModel.onDenyDone();
+    private final Runnable danceTimeout = () -> viewModel.onDanceDone();
+    private Runnable bonusTimeout; // Dinámico según duración de secuencia
+
+    // --- BroadcastReceivers ---
+
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
+    };
+    private final BroadcastReceiver pauseReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { setInputEnabled(false); }
+    };
+    private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { setInputEnabled(true); }
+    };
+
+    private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(celebrateTimeout);
+            viewModel.onCelebrateDone();
+        }
+    };
+    private final BroadcastReceiver denyDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(denyTimeout);
+            viewModel.onDenyDone();
+        }
+    };
+    private final BroadcastReceiver danceDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(danceTimeout);
+            viewModel.onDanceDone();
+        }
     };
 
     @Override
@@ -69,35 +117,87 @@ public class SequenceActivity extends AppCompatActivity {
                 case SHOWING:
                     root.setBackgroundColor(COLOR_NEUTRAL);
                     tvInstruction.setText(R.string.sequence_watch);
+                    updateProgressText();
                     showSequenceAnimation(viewModel.getSequence());
                     break;
+
                 case INPUT:
-                    layoutSequence.setVisibility(android.view.View.GONE);
+                    layoutSequence.setVisibility(View.GONE);
                     tvInstruction.setText(R.string.sequence_repeat);
                     showOptions(viewModel.getShuffledOptions().getValue());
                     break;
+
                 case CORRECT:
+                    // Feedback visual de acierto: fondo verde
                     root.setBackgroundColor(COLOR_CORRECT);
                     tvInstruction.setText(R.string.sequence_correct);
-                    layoutOptions.setVisibility(android.view.View.GONE);
-                    // Auto-restart with new sequence after 2s
-                    handler.postDelayed(() -> viewModel.restart(), 2500);
+                    layoutOptions.setVisibility(View.GONE);
+                    updateProgressText();
+                    // Timeout de seguridad por si no llega CELEBRATE_DONE
+                    handler.postDelayed(celebrateTimeout, CELEBRATE_TIMEOUT_MS);
                     break;
+
+                case EXECUTING_BONUS:
+                    // Ejecutando secuencia física como bonus
+                    tvInstruction.setText(R.string.sequence_correct);
+                    // Timeout para esperar a que termine el bonus
+                    long bonusDuration = viewModel.getBonusDurationMs();
+                    bonusTimeout = () -> viewModel.onBonusFinished();
+                    handler.postDelayed(bonusTimeout, bonusDuration);
+                    break;
+
                 case WRONG:
-                    handler.postDelayed(() -> viewModel.restart(), 1000);
+                    // Sin color rojo (principio TEA: ausencia de feedback negativo)
+                    root.setBackgroundColor(COLOR_NEUTRAL);
+                    tvInstruction.setText(R.string.sequence_watch);
+                    layoutOptions.setVisibility(View.GONE);
+                    // Timeout de seguridad por si no llega DENY_DONE
+                    handler.postDelayed(denyTimeout, DENY_TIMEOUT_MS);
+                    break;
+
+                case COMPLETING:
+                    // DANCE enviado, esperando DANCE_DONE
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    tvInstruction.setText(R.string.sequence_correct);
+                    tvInstruction.setTextSize(28f);
+                    layoutOptions.setVisibility(View.GONE);
+                    layoutSequence.setVisibility(View.GONE);
+                    handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
+                    break;
+
+                case COMPLETED:
+                    // DANCE_DONE recibido — felicitación final
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    tvInstruction.setText(R.string.sequence_correct);
+                    tvInstruction.setTextSize(28f);
+                    layoutOptions.setVisibility(View.GONE);
+                    layoutSequence.setVisibility(View.GONE);
+                    handler.postDelayed(this::finish, 2500);
                     break;
             }
         });
 
-        LocalBroadcastManager.getInstance(this)
-                .registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        // Registrar broadcasts
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+        lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
+        lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
+        lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
+        lbm.registerReceiver(celebrateDoneReceiver, new IntentFilter(AppConstants.ACTION_CELEBRATE_DONE));
+        lbm.registerReceiver(denyDoneReceiver, new IntentFilter(AppConstants.ACTION_DENY_DONE));
+        lbm.registerReceiver(danceDoneReceiver, new IntentFilter(AppConstants.ACTION_DANCE_DONE));
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         handler.removeCallbacksAndMessages(null);
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(sessionEndReceiver);
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+        lbm.unregisterReceiver(sessionEndReceiver);
+        lbm.unregisterReceiver(pauseReceiver);
+        lbm.unregisterReceiver(resumeReceiver);
+        lbm.unregisterReceiver(celebrateDoneReceiver);
+        lbm.unregisterReceiver(denyDoneReceiver);
+        lbm.unregisterReceiver(danceDoneReceiver);
     }
 
     private void buildLayout() {
@@ -107,6 +207,13 @@ public class SequenceActivity extends AppCompatActivity {
         root.setBackgroundColor(COLOR_NEUTRAL);
         root.setPadding(32, 48, 32, 48);
         setContentView(root);
+
+        tvProgress = new TextView(this);
+        tvProgress.setTextSize(14f);
+        tvProgress.setTextColor(Color.parseColor("#616161"));
+        tvProgress.setGravity(Gravity.CENTER);
+        tvProgress.setPadding(0, 0, 0, 8);
+        root.addView(tvProgress);
 
         tvInstruction = new TextView(this);
         tvInstruction.setText(R.string.sequence_watch);
@@ -124,16 +231,21 @@ public class SequenceActivity extends AppCompatActivity {
         layoutOptions = new LinearLayout(this);
         layoutOptions.setOrientation(LinearLayout.HORIZONTAL);
         layoutOptions.setGravity(Gravity.CENTER);
-        layoutOptions.setVisibility(android.view.View.GONE);
+        layoutOptions.setVisibility(View.GONE);
         root.addView(layoutOptions);
     }
 
+    private void updateProgressText() {
+        tvProgress.setText(viewModel.getCompletedSequences() + " / "
+                + viewModel.getTotalSequencesToComplete());
+    }
+
     private void showSequenceAnimation(List<String> sequence) {
-        layoutSequence.setVisibility(android.view.View.VISIBLE);
-        layoutOptions.setVisibility(android.view.View.GONE);
+        layoutSequence.setVisibility(View.VISIBLE);
+        layoutOptions.setVisibility(View.GONE);
         layoutSequence.removeAllViews();
 
-        // Show each step with delay and execute on robot
+        // Show each step with delay
         for (int i = 0; i < sequence.size(); i++) {
             final String step = sequence.get(i);
             final int index = i;
@@ -154,9 +266,6 @@ public class SequenceActivity extends AppCompatActivity {
             }, (long) index * SHOW_STEP_DELAY);
         }
 
-        // Execute physically on robot
-        viewModel.executeFullSequence();
-
         // After showing all, transition to input
         long totalShowTime = (long) sequence.size() * SHOW_STEP_DELAY + 1000;
         handler.postDelayed(() -> viewModel.onShowingFinished(), totalShowTime);
@@ -164,7 +273,7 @@ public class SequenceActivity extends AppCompatActivity {
 
     private void showOptions(List<String> options) {
         if (options == null) return;
-        layoutOptions.setVisibility(android.view.View.VISIBLE);
+        layoutOptions.setVisibility(View.VISIBLE);
         layoutOptions.removeAllViews();
 
         for (String item : options) {
@@ -181,6 +290,13 @@ public class SequenceActivity extends AppCompatActivity {
             btn.setLayoutParams(p);
             btn.setOnClickListener(v -> viewModel.onItemSelected(item));
             layoutOptions.addView(btn);
+        }
+    }
+
+    private void setInputEnabled(boolean enabled) {
+        for (int i = 0; i < layoutOptions.getChildCount(); i++) {
+            layoutOptions.getChildAt(i).setEnabled(enabled);
+            layoutOptions.getChildAt(i).setAlpha(enabled ? 1f : 0.5f);
         }
     }
 

@@ -23,6 +23,14 @@ import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.SocialViewModel;
 
+/**
+ * Activity de Escenarios Sociales.
+ *
+ * Feedback estandarizado TEA:
+ * - Acierto: fondo verde + CELEBRATE → CELEBRATE_DONE → MOVE_TIMED → MOVE_DONE → siguiente
+ * - Fallo: sin color rojo negativo + DENY → DENY_DONE → nuevo escenario
+ * - Completitud: DANCE → DANCE_DONE → pantalla de felicitación
+ */
 public class SocialActivity extends AppCompatActivity {
 
     public static final String EXTRA_SESSION_ID          = "session_id";
@@ -30,8 +38,13 @@ public class SocialActivity extends AppCompatActivity {
     public static final String EXTRA_STUDENT_PROFILE     = "student_profile_json";
 
     private static final int COLOR_CORRECT = 0xFFC8E6C9;
-    private static final int COLOR_WRONG   = 0xFFFFCDD2;
     private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
+
+    // Timeouts de seguridad por si no llega DONE del Arduino
+    private static final long CELEBRATE_TIMEOUT_MS = 3000;
+    private static final long MOVE_TIMEOUT_MS = 2500;
+    private static final long DENY_TIMEOUT_MS = 2500;
+    private static final long DANCE_TIMEOUT_MS = 5000;
 
     private SocialViewModel viewModel;
     private LinearLayout root;
@@ -45,6 +58,14 @@ public class SocialActivity extends AppCompatActivity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    // --- Runnables de timeout ---
+    private final Runnable celebrateTimeout = () -> viewModel.onCelebrateDone();
+    private final Runnable moveTimeout = () -> viewModel.onMoveDone();
+    private final Runnable denyTimeout = () -> viewModel.onDenyDone();
+    private final Runnable danceTimeout = () -> viewModel.onDanceDone();
+
+    // --- BroadcastReceivers ---
+
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
@@ -53,6 +74,31 @@ public class SocialActivity extends AppCompatActivity {
     };
     private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(true); }
+    };
+
+    private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(celebrateTimeout);
+            viewModel.onCelebrateDone();
+        }
+    };
+    private final BroadcastReceiver moveDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(moveTimeout);
+            viewModel.onMoveDone();
+        }
+    };
+    private final BroadcastReceiver denyDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(denyTimeout);
+            viewModel.onDenyDone();
+        }
+    };
+    private final BroadcastReceiver danceDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(danceTimeout);
+            viewModel.onDanceDone();
+        }
     };
 
     @Override
@@ -95,27 +141,48 @@ public class SocialActivity extends AppCompatActivity {
                     break;
 
                 case CORRECT:
+                    // Feedback visual de acierto: fondo verde suave
                     root.setBackgroundColor(COLOR_CORRECT);
                     setOptionsEnabled(false);
                     tvFeedback.setText(state.feedbackText);
                     tvFeedback.setVisibility(android.view.View.VISIBLE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
-                    // Espera a que el robot termine el movimiento y luego avanza
-                    handler.postDelayed(() -> viewModel.advanceToNext(), 2000);
+                    // Timeout de seguridad por si no llega CELEBRATE_DONE
+                    handler.postDelayed(celebrateTimeout, CELEBRATE_TIMEOUT_MS);
+                    break;
+
+                case CORRECT_ADVANCING:
+                    // Robot avanzando casilla, mantener fondo verde
+                    handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
                 case WRONG:
-                    root.setBackgroundColor(COLOR_WRONG);
+                    // Sin color rojo (principio TEA: ausencia de feedback negativo explícito)
+                    // Usar fondo neutro en vez de rojo
+                    root.setBackgroundColor(COLOR_NEUTRAL);
                     setOptionsEnabled(false);
                     tvFeedback.setText(state.feedbackText);
                     tvFeedback.setVisibility(android.view.View.VISIBLE);
                     tvCorrectHint.setText("La respuesta correcta era: " + state.correctText);
                     tvCorrectHint.setVisibility(android.view.View.VISIBLE);
-                    // Tras mostrar feedback, nuevo escenario sin avanzar
-                    handler.postDelayed(() -> viewModel.retryAfterWrong(), 3000);
+                    // Timeout de seguridad por si no llega DENY_DONE
+                    handler.postDelayed(denyTimeout, DENY_TIMEOUT_MS);
+                    break;
+
+                case COMPLETING:
+                    // DANCE enviado, esperando DANCE_DONE
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    tvDescription.setText("¡Actividad completada!");
+                    tvDescription.setTextSize(28f);
+                    btnOptionA.setVisibility(android.view.View.GONE);
+                    btnOptionB.setVisibility(android.view.View.GONE);
+                    tvFeedback.setVisibility(android.view.View.GONE);
+                    tvCorrectHint.setVisibility(android.view.View.GONE);
+                    handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
                     break;
 
                 case COMPLETED:
+                    // DANCE_DONE recibido — mantener felicitación
                     root.setBackgroundColor(COLOR_CORRECT);
                     tvDescription.setText("¡Actividad completada!");
                     tvDescription.setTextSize(28f);
@@ -127,10 +194,15 @@ public class SocialActivity extends AppCompatActivity {
             }
         });
 
+        // Registrar broadcasts
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
         lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
         lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
+        lbm.registerReceiver(celebrateDoneReceiver, new IntentFilter(AppConstants.ACTION_CELEBRATE_DONE));
+        lbm.registerReceiver(moveDoneReceiver, new IntentFilter(AppConstants.ACTION_MOVE_DONE));
+        lbm.registerReceiver(denyDoneReceiver, new IntentFilter(AppConstants.ACTION_DENY_DONE));
+        lbm.registerReceiver(danceDoneReceiver, new IntentFilter(AppConstants.ACTION_DANCE_DONE));
     }
 
     @Override
@@ -141,6 +213,10 @@ public class SocialActivity extends AppCompatActivity {
         lbm.unregisterReceiver(sessionEndReceiver);
         lbm.unregisterReceiver(pauseReceiver);
         lbm.unregisterReceiver(resumeReceiver);
+        lbm.unregisterReceiver(celebrateDoneReceiver);
+        lbm.unregisterReceiver(moveDoneReceiver);
+        lbm.unregisterReceiver(denyDoneReceiver);
+        lbm.unregisterReceiver(danceDoneReceiver);
     }
 
     private void buildLayout() {

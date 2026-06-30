@@ -469,6 +469,26 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             case AppConstants.MSG_TILT_ALERT:
                 handleTiltAlert();
                 break;
+            case AppConstants.MSG_CELEBRATE_DONE:
+                LocalBroadcastManager.getInstance(this)
+                        .sendBroadcast(new Intent(AppConstants.ACTION_CELEBRATE_DONE));
+                break;
+            case AppConstants.MSG_DENY_DONE:
+                LocalBroadcastManager.getInstance(this)
+                        .sendBroadcast(new Intent(AppConstants.ACTION_DENY_DONE));
+                break;
+            case AppConstants.MSG_MOVE_DONE:
+                LocalBroadcastManager.getInstance(this)
+                        .sendBroadcast(new Intent(AppConstants.ACTION_MOVE_DONE));
+                break;
+            case AppConstants.MSG_DANCE_DONE:
+                LocalBroadcastManager.getInstance(this)
+                        .sendBroadcast(new Intent(AppConstants.ACTION_DANCE_DONE));
+                break;
+            case AppConstants.MSG_BLOCKED:
+                LocalBroadcastManager.getInstance(this)
+                        .sendBroadcast(new Intent(AppConstants.ACTION_BLOCKED));
+                break;
             default:
                 break;
         }

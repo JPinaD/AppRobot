@@ -46,6 +46,13 @@ public class AppConstants {
     // Seguridad: broadcast para notificar tilt a Activities activas
     public static final String ACTION_TILT_ALERT = "com.example.approbot.ACTION_TILT_ALERT";
 
+    // Broadcasts locales para comandos BT DONE (feedback estandarizado)
+    public static final String ACTION_CELEBRATE_DONE = "com.example.approbot.ACTION_CELEBRATE_DONE";
+    public static final String ACTION_DENY_DONE      = "com.example.approbot.ACTION_DENY_DONE";
+    public static final String ACTION_MOVE_DONE      = "com.example.approbot.ACTION_MOVE_DONE";
+    public static final String ACTION_DANCE_DONE     = "com.example.approbot.ACTION_DANCE_DONE";
+    public static final String ACTION_BLOCKED        = "com.example.approbot.ACTION_BLOCKED";
+
     // Persistencia de sesión activa
     public static final String PREF_ACTIVE_SESSION = "active_session";
 

@@ -30,6 +30,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * Activity de Reconocimiento Emocional.
+ *
+ * Feedback estandarizado TEA:
+ * - Acierto: fondo verde + CELEBRATE → CELEBRATE_DONE → MOVE_TIMED → MOVE_DONE → siguiente
+ * - Fallo: sin color negativo + DENY → DENY_DONE → reintento
+ * - Completitud: DANCE → DANCE_DONE → pantalla de felicitación
+ */
 public class EmotionActivity extends AppCompatActivity {
 
     public static final String EXTRA_SESSION_ID = "session_id";
@@ -39,6 +47,12 @@ public class EmotionActivity extends AppCompatActivity {
 
     private static final int COLOR_CORRECT = 0xFFC8E6C9;
     private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
+
+    // Timeout de seguridad: si no llega DONE del Arduino, avanzar igualmente
+    private static final long CELEBRATE_TIMEOUT_MS = 3000;
+    private static final long MOVE_TIMEOUT_MS = 2500;
+    private static final long DENY_TIMEOUT_MS = 2500;
+    private static final long DANCE_TIMEOUT_MS = 5000;
 
     private EmotionViewModel viewModel;
     private LinearLayout root;
@@ -52,6 +66,14 @@ public class EmotionActivity extends AppCompatActivity {
     private boolean ttsReady = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    // --- Runnables de timeout (por si no llega el DONE del Arduino) ---
+    private final Runnable celebrateTimeout = () -> viewModel.onCelebrateDone();
+    private final Runnable moveTimeout = () -> viewModel.onMoveDone();
+    private final Runnable denyTimeout = () -> viewModel.onDenyDone();
+    private final Runnable danceTimeout = () -> viewModel.onDanceDone();
+
+    // --- BroadcastReceivers ---
+
     private final BroadcastReceiver sessionEndReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { finish(); }
     };
@@ -60,6 +82,31 @@ public class EmotionActivity extends AppCompatActivity {
     };
     private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { setOptionsEnabled(true); }
+    };
+
+    private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(celebrateTimeout);
+            viewModel.onCelebrateDone();
+        }
+    };
+    private final BroadcastReceiver moveDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(moveTimeout);
+            viewModel.onMoveDone();
+        }
+    };
+    private final BroadcastReceiver denyDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(denyTimeout);
+            viewModel.onDenyDone();
+        }
+    };
+    private final BroadcastReceiver danceDoneReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.removeCallbacks(danceTimeout);
+            viewModel.onDanceDone();
+        }
     };
 
     @Override
@@ -93,23 +140,45 @@ public class EmotionActivity extends AppCompatActivity {
         viewModel.getState().observe(this, state -> {
             switch (state) {
                 case CORRECT:
+                    // Feedback visual de acierto: fondo verde suave
                     root.setBackgroundColor(COLOR_CORRECT);
                     setOptionsEnabled(false);
-                    handler.postDelayed(() -> {
-                        root.setBackgroundColor(COLOR_NEUTRAL);
-                        viewModel.advanceAfterCorrect();
-                    }, 1500);
+                    // Timeout de seguridad por si no llega CELEBRATE_DONE
+                    handler.postDelayed(celebrateTimeout, CELEBRATE_TIMEOUT_MS);
                     break;
+
+                case CORRECT_ADVANCING:
+                    // Robot avanzando casilla (MOVE_TIMED enviado)
+                    // Timeout de seguridad por si no llega MOVE_DONE
+                    handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
+                    break;
+
                 case WRONG:
+                    // Sin color negativo (principio TEA: ausencia de feedback negativo)
                     setOptionsEnabled(false);
-                    handler.postDelayed(() -> viewModel.resetAfterWrong(), 1200);
+                    // Timeout de seguridad por si no llega DENY_DONE
+                    handler.postDelayed(denyTimeout, DENY_TIMEOUT_MS);
                     break;
+
                 case SHOWING:
                     root.setBackgroundColor(COLOR_NEUTRAL);
                     showRound();
                     setOptionsEnabled(true);
                     break;
+
+                case COMPLETING:
+                    // DANCE enviado, esperando DANCE_DONE
+                    root.setBackgroundColor(COLOR_CORRECT);
+                    setOptionsEnabled(false);
+                    tvQuestion.setText(R.string.emotion_completed);
+                    tvQuestion.setTextSize(28f);
+                    gridOptions.removeAllViews();
+                    ivExample.setVisibility(View.GONE);
+                    handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
+                    break;
+
                 case COMPLETED:
+                    // DANCE_DONE recibido o timeout — felicitación final
                     root.setBackgroundColor(COLOR_CORRECT);
                     tvQuestion.setText(R.string.emotion_completed);
                     tvQuestion.setTextSize(28f);
@@ -125,10 +194,15 @@ public class EmotionActivity extends AppCompatActivity {
             updateProgress();
         });
 
+        // Registrar broadcasts
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
         lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
         lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
+        lbm.registerReceiver(celebrateDoneReceiver, new IntentFilter(AppConstants.ACTION_CELEBRATE_DONE));
+        lbm.registerReceiver(moveDoneReceiver, new IntentFilter(AppConstants.ACTION_MOVE_DONE));
+        lbm.registerReceiver(denyDoneReceiver, new IntentFilter(AppConstants.ACTION_DENY_DONE));
+        lbm.registerReceiver(danceDoneReceiver, new IntentFilter(AppConstants.ACTION_DANCE_DONE));
     }
 
     @Override
@@ -140,6 +214,10 @@ public class EmotionActivity extends AppCompatActivity {
         lbm.unregisterReceiver(sessionEndReceiver);
         lbm.unregisterReceiver(pauseReceiver);
         lbm.unregisterReceiver(resumeReceiver);
+        lbm.unregisterReceiver(celebrateDoneReceiver);
+        lbm.unregisterReceiver(moveDoneReceiver);
+        lbm.unregisterReceiver(denyDoneReceiver);
+        lbm.unregisterReceiver(danceDoneReceiver);
     }
 
     private void buildLayout() {

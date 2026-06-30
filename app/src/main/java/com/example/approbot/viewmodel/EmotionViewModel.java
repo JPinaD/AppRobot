@@ -19,11 +19,26 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * ViewModel para la actividad de Reconocimiento Emocional.
+ *
+ * Feedback estandarizado TEA:
+ * - Acierto: CELEBRATE → esperar CELEBRATE_DONE → MOVE_TIMED FORWARD (avance casilla)
+ * - Fallo: DENY (sin movimiento de motores)
+ * - Completitud: DANCE → esperar DANCE_DONE → mostrar pantalla completada
+ */
 public class EmotionViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "EmotionViewModel";
 
-    public enum State { SHOWING, CORRECT, WRONG, COMPLETED }
+    public enum State {
+        SHOWING,           // Mostrando opciones, esperando input del alumno
+        CORRECT,           // Acierto: celebrando (CELEBRATE enviado)
+        CORRECT_ADVANCING, // Avanzando casilla (MOVE_TIMED enviado tras CELEBRATE_DONE)
+        WRONG,             // Fallo: DENY enviado
+        COMPLETING,        // Actividad completada: DANCE enviado, esperando DANCE_DONE
+        COMPLETED          // Fin: DANCE_DONE recibido, mostrar felicitación
+    }
 
     private final MutableLiveData<State> state = new MutableLiveData<>(State.SHOWING);
     private final MutableLiveData<Integer> progress = new MutableLiveData<>(0);
@@ -68,6 +83,11 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
         return options;
     }
 
+    /**
+     * Alumno selecciona una opción.
+     * - Acierto: envía CELEBRATE, transiciona a CORRECT (espera CELEBRATE_DONE)
+     * - Fallo: envía DENY, transiciona a WRONG
+     */
     public void onOptionSelected(String selectedId) {
         boolean correct = selectedId.equals(correctEmotionId);
         sendResult(correct, selectedId);
@@ -83,15 +103,69 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
         }
     }
 
-    public void advanceAfterCorrect() {
+    /**
+     * Llamado cuando se recibe CELEBRATE_DONE del Arduino.
+     * Si quedan rondas: envía MOVE_TIMED FORWARD para avanzar casilla.
+     * Si era la última ronda: envía DANCE para celebrar completitud.
+     */
+    public void onCelebrateDone() {
+        if (state.getValue() != State.CORRECT) return;
+
         if (currentRound >= totalRounds) {
-            state.postValue(State.COMPLETED);
+            // Actividad completada: enviar DANCE
+            state.postValue(State.COMPLETING);
+            sendDance();
         } else {
-            pickNextEmotion();
-            state.postValue(State.SHOWING);
+            // Avanzar casilla
+            state.postValue(State.CORRECT_ADVANCING);
+            sendMoveTimed("FORWARD", 600);
         }
     }
 
+    /**
+     * Llamado cuando se recibe MOVE_DONE del Arduino (tras avance de casilla).
+     * Carga la siguiente emoción.
+     */
+    public void onMoveDone() {
+        if (state.getValue() != State.CORRECT_ADVANCING) return;
+        pickNextEmotion();
+        state.postValue(State.SHOWING);
+    }
+
+    /**
+     * Llamado cuando se recibe DANCE_DONE del Arduino.
+     * Transiciona a COMPLETED para mostrar pantalla de felicitación.
+     */
+    public void onDanceDone() {
+        if (state.getValue() != State.COMPLETING) return;
+        state.postValue(State.COMPLETED);
+    }
+
+    /**
+     * Llamado cuando se recibe DENY_DONE del Arduino.
+     * Vuelve al estado SHOWING para permitir reintento.
+     */
+    public void onDenyDone() {
+        if (state.getValue() != State.WRONG) return;
+        state.postValue(State.SHOWING);
+    }
+
+    /**
+     * Fallback: si no llega el DONE (por BT inestable), la Activity puede
+     * llamar a este método tras un timeout para forzar la transición.
+     */
+    public void advanceAfterCorrect() {
+        State current = state.getValue();
+        if (current == State.CORRECT) {
+            onCelebrateDone();
+        } else if (current == State.CORRECT_ADVANCING) {
+            onMoveDone();
+        }
+    }
+
+    /**
+     * Fallback: si no llega DENY_DONE, la Activity puede forzar el reset.
+     */
     public void resetAfterWrong() {
         state.postValue(State.SHOWING);
     }
@@ -144,6 +218,17 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
     private void sendDeny() {
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
+    }
+
+    private void sendMoveTimed(String dir, int ms) {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
+                "{\"dir\":\"" + dir + "\",\"ms\":" + ms + "}"));
+    }
+
+    private void sendDance() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_DANCE, null));
     }
 
     // --- ActivityStatusProvider ---

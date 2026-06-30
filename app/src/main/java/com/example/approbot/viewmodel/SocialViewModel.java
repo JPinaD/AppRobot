@@ -20,12 +20,20 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * ViewModel para la actividad de Escenarios Sociales.
+ *
+ * Feedback estandarizado TEA:
+ * - Acierto: CELEBRATE → esperar CELEBRATE_DONE → MOVE_TIMED FORWARD (avance casilla)
+ * - Fallo: DENY (oscilación servo, sin movimiento) + muestra respuesta correcta
+ * - Completitud: DANCE → esperar DANCE_DONE → pantalla completada
+ */
 public class SocialViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "SocialViewModel";
     private static final int TOTAL_SQUARES = 5;
 
-    public enum State { SHOWING, CORRECT, WRONG, COMPLETED }
+    public enum State { SHOWING, CORRECT, CORRECT_ADVANCING, WRONG, COMPLETING, COMPLETED }
 
     public static class UiState {
         public final State state;
@@ -69,6 +77,11 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     public int getTotalSquares() { return TOTAL_SQUARES; }
     public int getCurrentSquare() { return currentSquare; }
 
+    /**
+     * Alumno selecciona una opción.
+     * - Acierto: envía CELEBRATE, transiciona a CORRECT
+     * - Fallo: envía DENY, transiciona a WRONG
+     */
     public void onOptionSelected(String option) {
         if (currentScenario == null) return;
 
@@ -79,18 +92,12 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
 
         if (correct) {
             currentSquare++;
-            // Robot avanza una casilla (el avance ES el feedback positivo)
-            sendMoveTimed("FORWARD", 600);
-
-            if (currentSquare >= TOTAL_SQUARES) {
-                uiState.postValue(new UiState(State.CORRECT, currentScenario,
-                        selectedOutcome, null, currentSquare));
-            } else {
-                uiState.postValue(new UiState(State.CORRECT, currentScenario,
-                        selectedOutcome, null, currentSquare));
-            }
+            // Enviar CELEBRATE (feedback estandarizado: acierto = CELEBRATE)
+            sendCelebrate();
+            uiState.postValue(new UiState(State.CORRECT, currentScenario,
+                    selectedOutcome, null, currentSquare));
         } else {
-            // Robot niega con servo (no se mueve)
+            // Enviar DENY (feedback estandarizado: fallo = DENY)
             sendDeny();
             String correctOptionText = "A".equals(currentScenario.correctOption)
                     ? currentScenario.optionA : currentScenario.optionB;
@@ -99,17 +106,76 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
         }
     }
 
-    /** Llamado por la Activity tras el delay post-acierto para cargar el siguiente escenario. */
-    public void advanceToNext() {
+    /**
+     * Llamado cuando se recibe CELEBRATE_DONE del Arduino.
+     * Si no es la última casilla: envía MOVE_TIMED FORWARD.
+     * Si es la última: envía DANCE.
+     */
+    public void onCelebrateDone() {
+        UiState current = uiState.getValue();
+        if (current == null || current.state != State.CORRECT) return;
+
         if (currentSquare >= TOTAL_SQUARES) {
+            // Completitud: enviar DANCE
             sendDance();
-            uiState.postValue(new UiState(State.COMPLETED, currentScenario, null, null, currentSquare));
-            return;
+            uiState.postValue(new UiState(State.COMPLETING, current.scenario,
+                    current.feedbackText, null, currentSquare));
+        } else {
+            // Avanzar casilla
+            sendMoveTimed("FORWARD", 600);
+            uiState.postValue(new UiState(State.CORRECT_ADVANCING, current.scenario,
+                    current.feedbackText, null, currentSquare));
         }
+    }
+
+    /**
+     * Llamado cuando se recibe MOVE_DONE del Arduino (tras avance de casilla).
+     * Carga el siguiente escenario.
+     */
+    public void onMoveDone() {
+        UiState current = uiState.getValue();
+        if (current == null || current.state != State.CORRECT_ADVANCING) return;
         pickNextScenario();
     }
 
-    /** Llamado por la Activity tras el delay post-fallo para cargar nuevo escenario sin avanzar. */
+    /**
+     * Llamado cuando se recibe DANCE_DONE del Arduino.
+     * Transiciona a COMPLETED.
+     */
+    public void onDanceDone() {
+        UiState current = uiState.getValue();
+        if (current == null || current.state != State.COMPLETING) return;
+        uiState.postValue(new UiState(State.COMPLETED, current.scenario,
+                null, null, currentSquare));
+    }
+
+    /**
+     * Llamado cuando se recibe DENY_DONE del Arduino.
+     * Carga un nuevo escenario sin avanzar casilla.
+     */
+    public void onDenyDone() {
+        UiState current = uiState.getValue();
+        if (current == null || current.state != State.WRONG) return;
+        pickNextScenario();
+    }
+
+    /**
+     * Fallback: si no llega CELEBRATE_DONE a tiempo (BT inestable),
+     * la Activity llama este método para forzar avance.
+     */
+    public void advanceToNext() {
+        UiState current = uiState.getValue();
+        if (current == null) return;
+        if (current.state == State.CORRECT) {
+            onCelebrateDone();
+        } else if (current.state == State.CORRECT_ADVANCING) {
+            onMoveDone();
+        }
+    }
+
+    /**
+     * Fallback: si no llega DENY_DONE, forzar retry.
+     */
     public void retryAfterWrong() {
         pickNextScenario();
     }
@@ -144,15 +210,15 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
         }
     }
 
+    private void sendCelebrate() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
+    }
+
     private void sendMoveTimed(String dir, int ms) {
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
                 "{\"dir\":\"" + dir + "\",\"ms\":" + ms + "}"));
-    }
-
-    private void sendServoConfirm() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_SERVO_COMMAND, "CONFIRM"));
     }
 
     private void sendDeny() {
