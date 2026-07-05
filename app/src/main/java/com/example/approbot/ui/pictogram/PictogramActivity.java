@@ -19,6 +19,7 @@ import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.RobotStatusReporter;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.ui.activities.CalmOverlayFragment;
+import com.example.approbot.ui.activities.TiltAlertDialogFragment;
 import com.example.approbot.ui.waiting.WaitingSessionActivity;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.viewmodel.PictogramViewModel;
@@ -57,6 +58,15 @@ public class PictogramActivity extends AppCompatActivity {
     private final BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) { hidePauseOverlay(); }
+    };
+
+    private final BroadcastReceiver tiltAlertReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (getSupportFragmentManager().findFragmentByTag(TiltAlertDialogFragment.TAG) == null) {
+                new TiltAlertDialogFragment().show(getSupportFragmentManager(), TiltAlertDialogFragment.TAG);
+            }
+        }
     };
 
     @Override
@@ -117,6 +127,7 @@ public class PictogramActivity extends AppCompatActivity {
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
         lbm.registerReceiver(pauseReceiver,      new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
         lbm.registerReceiver(resumeReceiver,     new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
+        lbm.registerReceiver(tiltAlertReceiver,  new IntentFilter(AppConstants.ACTION_TILT_ALERT));
     }
 
     @Override
@@ -140,6 +151,7 @@ public class PictogramActivity extends AppCompatActivity {
         lbm.unregisterReceiver(sessionEndReceiver);
         lbm.unregisterReceiver(pauseReceiver);
         lbm.unregisterReceiver(resumeReceiver);
+        lbm.unregisterReceiver(tiltAlertReceiver);
     }
 
     public PictogramViewModel getViewModel() { return viewModel; }

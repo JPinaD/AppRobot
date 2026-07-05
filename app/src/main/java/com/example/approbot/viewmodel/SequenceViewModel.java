@@ -1,5 +1,7 @@
 package com.example.approbot.viewmodel;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.lifecycle.LiveData;
@@ -16,203 +18,279 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
 /**
  * ViewModel para la actividad de Secuencias Visuales.
  *
- * Feedback estandarizado TEA:
- * - Acierto (secuencia completa correcta): CELEBRATE → esperar CELEBRATE_DONE
- *   → luego ejecutar la secuencia físicamente como recompensa bonus
- * - Fallo: DENY → esperar DENY_DONE → volver a mostrar secuencia (reintento)
- * - Completitud (N secuencias correctas): DANCE → esperar DANCE_DONE → fin
+ * Flujo correcto:
+ * - SHOWING: se genera secuencia aleatoria de 3 direcciones, se muestra en pantalla
+ *   Y el robot la ejecuta físicamente (MOVE_TIMED por cada dirección, esperando
+ *   MOVE_DONE entre cada una). Se transiciona a INPUT cuando TODOS los movimientos
+ *   físicos han terminado.
+ * - INPUT: se muestran 4 botones (FORWARD, BACKWARD, LEFT, RIGHT). El alumno
+ *   pulsa en el orden correcto (3 pulsaciones).
+ * - Acierto: se muestra mensaje positivo durante 4s. NO se ejecuta la secuencia
+ *   físicamente tras acertar (la ejecución física es solo durante SHOWING/demo).
+ *   Luego avanza a la siguiente ronda.
+ * - Fallo: feedback visual suave (sin movimiento), espera 4s, muestra la MISMA secuencia.
+ * - Última ronda completada: envía DANCE (celebración final).
+ *
+ * El servo NO se usa. CELEBRATE no se usa (no tiene sentido en este flujo).
  */
 public class SequenceViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "SequenceViewModel";
-    private static final String[] MOVE_POOL = {"FORWARD", "LEFT", "RIGHT", "SERVO"};
-    private static final int TOTAL_SEQUENCES_TO_COMPLETE = 3; // Actividad termina tras 3 secuencias correctas
+    private static final String[] DIRECTIONS = {"FORWARD", "BACKWARD", "LEFT", "RIGHT"};
+    private static final int SEQUENCE_LENGTH = 3;
+
+    /** Duración del feedback visual de fallo antes de reintentar (ms). */
+    private static final long WRONG_RETRY_DELAY_MS = 4000;
+    /** Duración del mensaje de acierto antes de avanzar a la siguiente ronda (ms). */
+    private static final long CORRECT_SHOWING_DELAY_MS = 4000;
+    /** Duración de cada MOVE_TIMED en la ejecución física (ms). */
+    private static final int MOVE_DURATION_MS = 800;
+    /** Delay between sequential MOVE_TIMED commands to avoid BT buffer congestion (ms). */
+    private static final long INTER_MOVE_DELAY_MS = 150;
+    /** Overall timeout for the entire demo phase (ms). If demo doesn't complete, force-advance to INPUT. */
+    private static final long DEMO_OVERALL_TIMEOUT_MS = 8000;
 
     public enum State {
-        SHOWING,           // Mostrando secuencia al alumno
-        INPUT,             // Esperando que el alumno reproduzca la secuencia
-        CORRECT,           // Secuencia correcta: CELEBRATE enviado
-        EXECUTING_BONUS,   // CELEBRATE_DONE recibido, ejecutando secuencia física como bonus
-        WRONG,             // Fallo: DENY enviado
-        COMPLETING,        // Actividad completada: DANCE enviado
-        COMPLETED          // DANCE_DONE recibido: fin
+        SHOWING,            // Mostrando la secuencia al alumno + robot ejecutándola
+        INPUT,              // Esperando que el alumno pulse los 4 botones en orden
+        CORRECT_SHOWING,    // Acierto: mostrando mensaje positivo, luego avanza a siguiente ronda
+        WRONG_SHOWING,      // Fallo: mostrando mensaje suave, luego reintento
+        DANCING,            // Última ronda: DANCE enviado, esperando DANCE_DONE
+        COMPLETED           // DANCE_DONE recibido: fin
     }
 
     private final MutableLiveData<State> state = new MutableLiveData<>(State.SHOWING);
-    private final MutableLiveData<List<String>> shuffledOptions = new MutableLiveData<>();
+    private final MutableLiveData<Integer> inputProgress = new MutableLiveData<>(0);
 
     private TcpServer tcpServer;
     private BluetoothRobotManager btManager;
     private String sessionId;
 
     private List<String> currentSequence = new ArrayList<>();
-    private List<String> previousSequence = new ArrayList<>();
-    private int inputIndex = 0;
-    private int sequenceLength;
-    private int completedSequences = 0; // Número de secuencias acertadas
+    private List<String> userInput = new ArrayList<>();
+    private int totalRounds = 3;
+    private int completedRounds = 0;
+    private int executingStepIndex = 0;
     private final Random random = new Random();
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    /**
+     * Safety timeout: if the entire demo (all MOVE_TIMED steps) doesn't complete
+     * within DEMO_OVERALL_TIMEOUT_MS, force transition to INPUT to avoid getting stuck.
+     */
+    private final Runnable demoOverallTimeout = () -> {
+        if (state.getValue() == State.SHOWING) {
+            Log.w(TAG, "Demo overall timeout fired — forcing transition to INPUT");
+            showingDemoDone = true;
+            isShowingDemo = false;
+            checkShowingComplete();
+        }
+    };
+
+    // --- Tracking for SHOWING phase (demo + visual timer) ---
+    private boolean showingDemoDone = false;
+    private boolean showingTimerDone = false;
+    /** True when in SHOWING phase executing demo moves */
+    private boolean isShowingDemo = false;
+
     public void init(TcpServer tcpServer, BluetoothRobotManager btManager,
-                     String sessionId, List<String> items, int seqLength) {
+                     String sessionId, List<String> items, int rounds) {
         this.tcpServer = tcpServer;
         this.btManager = btManager;
         this.sessionId = sessionId;
-        this.sequenceLength = Math.max(2, Math.min(seqLength, 5));
+        this.totalRounds = rounds > 0 ? rounds : 3;
         generateNewSequence();
+        // Start the demo execution for the first showing
+        startShowingDemo();
     }
 
     public LiveData<State> getState() { return state; }
-    public LiveData<List<String>> getShuffledOptions() { return shuffledOptions; }
+    public LiveData<Integer> getInputProgress() { return inputProgress; }
     public List<String> getSequence() { return currentSequence; }
-    public int getCompletedSequences() { return completedSequences; }
-    public int getTotalSequencesToComplete() { return TOTAL_SEQUENCES_TO_COMPLETE; }
+    public int getCompletedRounds() { return completedRounds; }
+    public int getTotalRounds() { return totalRounds; }
 
-    /** Called after the showing animation finishes — transition to input. */
+    /**
+     * Called by Activity after the visual showing timer finishes (3s).
+     * Transition to INPUT only if the physical demo is also done.
+     */
     public void onShowingFinished() {
-        inputIndex = 0;
-        List<String> options = new ArrayList<>(currentSequence);
-        Collections.shuffle(options);
-        shuffledOptions.postValue(options);
-        state.postValue(State.INPUT);
+        showingTimerDone = true;
+        checkShowingComplete();
     }
 
     /**
-     * Called when user taps an item in the input phase.
-     * Cada ítem se ejecuta físicamente uno a uno.
-     * Si completa toda la secuencia correctamente: CELEBRATE.
-     * Si se equivoca: DENY.
+     * Called when the user presses one of the 4 direction buttons.
+     * Validates incrementally: each press is checked against the expected direction.
+     * After 3 correct presses, triggers physical execution.
+     * On first wrong press, triggers failure feedback.
      */
-    public void onItemSelected(String item) {
-        String expected = currentSequence.get(inputIndex);
-        if (item.equals(expected)) {
-            inputIndex++;
-            // Ejecutar el paso individual en el robot (feedback incremental)
-            executeStep(item);
-            if (inputIndex >= currentSequence.size()) {
-                // Secuencia completa correcta
-                completedSequences++;
+    public void onDirectionSelected(String direction) {
+        if (state.getValue() != State.INPUT) return;
+
+        int currentIndex = userInput.size();
+        String expected = currentSequence.get(currentIndex);
+
+        if (direction.equals(expected)) {
+            // Correct press
+            userInput.add(direction);
+            inputProgress.setValue(userInput.size());
+
+            if (userInput.size() >= SEQUENCE_LENGTH) {
+                // Full sequence correct!
+                completedRounds++;
                 sendResult(true);
-                state.postValue(State.CORRECT);
-                sendCelebrate();
+                // Show positive message, then advance (no physical execution)
+                state.setValue(State.CORRECT_SHOWING);
+                scheduleCorrectAdvance();
             }
         } else {
-            // Fallo: enviar DENY (feedback estandarizado)
+            // Wrong press — immediate failure
             sendResult(false);
-            state.postValue(State.WRONG);
-            sendDeny();
+            state.setValue(State.WRONG_SHOWING);
+            scheduleRetry();
         }
     }
 
     /**
-     * Llamado cuando se recibe CELEBRATE_DONE del Arduino.
-     * Ejecuta la secuencia completa como bonus de recompensa.
+     * Called when MOVE_DONE is received from the Arduino.
+     * Only handles the SHOWING demo phase (physical execution during sequence display).
      */
-    public void onCelebrateDone() {
-        if (state.getValue() != State.CORRECT) return;
+    public void onMoveDone() {
+        State current = state.getValue();
 
-        if (completedSequences >= TOTAL_SEQUENCES_TO_COMPLETE) {
-            // Actividad completada: enviar DANCE
-            state.postValue(State.COMPLETING);
-            sendDance();
-        } else {
-            // Bonus: ejecutar la secuencia físicamente como recompensa visual
-            state.postValue(State.EXECUTING_BONUS);
-            executeFullSequence();
-        }
-    }
-
-    /**
-     * Llamado tras la ejecución del bonus (llamado por la Activity con timeout
-     * basado en la duración de la secuencia).
-     * Genera nueva secuencia y vuelve a SHOWING.
-     */
-    public void onBonusFinished() {
-        if (state.getValue() != State.EXECUTING_BONUS) return;
-        generateNewSequence();
-        state.postValue(State.SHOWING);
-    }
-
-    /**
-     * Llamado cuando se recibe DENY_DONE del Arduino.
-     * Vuelve a mostrar la secuencia (reintento sin penalización).
-     */
-    public void onDenyDone() {
-        if (state.getValue() != State.WRONG) return;
-        // Volver a mostrar la MISMA secuencia (reintento)
-        state.postValue(State.SHOWING);
-    }
-
-    /**
-     * Llamado cuando se recibe DANCE_DONE del Arduino.
-     * Transiciona a COMPLETED.
-     */
-    public void onDanceDone() {
-        if (state.getValue() != State.COMPLETING) return;
-        state.postValue(State.COMPLETED);
-    }
-
-    /** Fallback: restart con nueva secuencia (legacy, usado como fallback de timeout). */
-    public void restart() {
-        generateNewSequence();
-        state.postValue(State.SHOWING);
-    }
-
-    /** Generate a random sequence different from the previous one. */
-    private void generateNewSequence() {
-        List<String> seq;
-        do {
-            seq = new ArrayList<>();
-            for (int i = 0; i < sequenceLength; i++) {
-                seq.add(MOVE_POOL[random.nextInt(MOVE_POOL.length)]);
+        if (current == State.SHOWING && isShowingDemo) {
+            // Demo move completed during SHOWING phase
+            executingStepIndex++;
+            if (executingStepIndex < currentSequence.size()) {
+                // Small delay before sending next command to avoid BT buffer congestion
+                handler.postDelayed(() -> {
+                    if (state.getValue() == State.SHOWING && isShowingDemo) {
+                        sendMoveTimedForStep(currentSequence.get(executingStepIndex));
+                    }
+                }, INTER_MOVE_DELAY_MS);
+            } else {
+                // All demo steps done
+                showingDemoDone = true;
+                isShowingDemo = false;
+                checkShowingComplete();
             }
-        } while (seq.equals(previousSequence));
-        previousSequence = new ArrayList<>(seq);
-        currentSequence = seq;
-    }
-
-    /** Execute a single step on the physical robot. */
-    private void executeStep(String step) {
-        if (btManager == null) return;
-        switch (step) {
-            case "FORWARD":
-                btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
-                        "{\"dir\":\"FORWARD\",\"ms\":600}"));
-                break;
-            case "LEFT":
-                btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
-                        "{\"dir\":\"LEFT\",\"ms\":400}"));
-                break;
-            case "RIGHT":
-                btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
-                        "{\"dir\":\"RIGHT\",\"ms\":400}"));
-                break;
-            case "SERVO":
-                btManager.send(new RobotMessage(AppConstants.MSG_SERVO_COMMAND, "CONFIRM"));
-                break;
         }
     }
 
-    /** Execute the full sequence as a bonus reward. */
-    public void executeFullSequence() {
-        if (btManager == null) return;
-        for (int i = 0; i < currentSequence.size(); i++) {
-            final String step = currentSequence.get(i);
-            final int delay = i * 1200; // 1.2s between steps
-            new android.os.Handler(android.os.Looper.getMainLooper())
-                    .postDelayed(() -> executeStep(step), delay);
+    /** Called when DANCE_DONE is received. */
+    public void onDanceDone() {
+        if (state.getValue() != State.DANCING) return;
+        state.setValue(State.COMPLETED);
+    }
+
+    /** Fallback: force advance if MOVE_DONE doesn't arrive (timeout in Activity). */
+    public void forceMoveDone() {
+        onMoveDone();
+    }
+
+    /** Fallback: force dance done if DANCE_DONE doesn't arrive (timeout in Activity). */
+    public void forceDanceDone() {
+        onDanceDone();
+    }
+
+    @Override
+    protected void onCleared() {
+        super.onCleared();
+        handler.removeCallbacksAndMessages(null);
+    }
+
+    // --- Private ---
+
+    /**
+     * Starts the physical demo execution during SHOWING phase.
+     * Sends the first MOVE_TIMED of the sequence. Subsequent steps are sent
+     * when onMoveDone() is called.
+     * Also starts an overall safety timeout to guarantee we transition to INPUT.
+     */
+    private void startShowingDemo() {
+        showingDemoDone = false;
+        showingTimerDone = false;
+        isShowingDemo = true;
+        executingStepIndex = 0;
+        sendMoveTimedForStep(currentSequence.get(0));
+        // Safety: if demo doesn't complete within overall timeout, force it done
+        handler.postDelayed(demoOverallTimeout, DEMO_OVERALL_TIMEOUT_MS);
+    }
+
+    /**
+     * Checks if both the visual timer and the physical demo are complete.
+     * If so, transitions to INPUT.
+     */
+    private void checkShowingComplete() {
+        if (showingDemoDone && showingTimerDone) {
+            handler.removeCallbacks(demoOverallTimeout);
+            userInput.clear();
+            inputProgress.setValue(0);
+            state.setValue(State.INPUT);
         }
     }
 
-    /** Calcula la duración total de la ejecución bonus en ms. */
-    public long getBonusDurationMs() {
-        return (long) currentSequence.size() * 1200 + 500; // duración + margen
+    /**
+     * Schedules advance to next round after showing the "correct" message.
+     * After CORRECT_SHOWING_DELAY_MS: if this was the last round, send DANCE;
+     * otherwise generate new sequence and start SHOWING.
+     */
+    private void scheduleCorrectAdvance() {
+        handler.removeCallbacksAndMessages(null);
+        handler.postDelayed(() -> {
+            if (completedRounds >= totalRounds) {
+                // Last round: send DANCE
+                sendDance();
+                state.setValue(State.DANCING);
+            } else {
+                // More rounds: generate new sequence and show
+                generateNewSequence();
+                state.setValue(State.SHOWING);
+                startShowingDemo();
+            }
+        }, CORRECT_SHOWING_DELAY_MS);
+    }
+
+    /** Schedules automatic retry after wrong answer (shows same sequence again). */
+    private void scheduleRetry() {
+        handler.removeCallbacksAndMessages(null);
+        handler.postDelayed(() -> {
+            // Show the SAME sequence again (don't generate new)
+            userInput.clear();
+            inputProgress.setValue(0);
+            state.setValue(State.SHOWING);
+            startShowingDemo();
+        }, WRONG_RETRY_DELAY_MS);
+    }
+
+    /** Generate a new random sequence of 3 directions. */
+    private void generateNewSequence() {
+        currentSequence.clear();
+        for (int i = 0; i < SEQUENCE_LENGTH; i++) {
+            currentSequence.add(DIRECTIONS[random.nextInt(DIRECTIONS.length)]);
+        }
+        userInput.clear();
+        inputProgress.postValue(0);
+    }
+
+    /** Send MOVE_TIMED for a single step of the sequence. */
+    private void sendMoveTimedForStep(String direction) {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
+                "{\"dir\":\"" + direction + "\",\"ms\":" + MOVE_DURATION_MS + "}"));
+    }
+
+    private void sendDance() {
+        if (btManager == null) return;
+        btManager.send(new RobotMessage(AppConstants.MSG_DANCE, null));
     }
 
     private void sendResult(boolean correct) {
@@ -221,9 +299,8 @@ public class SequenceViewModel extends ViewModel implements ActivityStatusProvid
             JSONObject payload = new JSONObject();
             payload.put("sessionId", sessionId);
             payload.put("correct", correct);
-            payload.put("sequenceLength", sequenceLength);
-            payload.put("completedSequences", completedSequences);
-            payload.put("totalSequences", TOTAL_SEQUENCES_TO_COMPLETE);
+            payload.put("completedRounds", completedRounds);
+            payload.put("totalRounds", totalRounds);
             JSONObject msg = new JSONObject();
             msg.put("type", AppConstants.MSG_ACTIVITY_RESULT);
             msg.put("payload", payload.toString());
@@ -233,27 +310,12 @@ public class SequenceViewModel extends ViewModel implements ActivityStatusProvid
         }
     }
 
-    private void sendCelebrate() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_CELEBRATE, null));
-    }
-
-    private void sendDeny() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
-    }
-
-    private void sendDance() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_DANCE, null));
-    }
-
     // --- ActivityStatusProvider ---
 
     @Override public Integer getBatteryPct() { return null; }
     @Override public String getActivityId() { return AppConstants.ACTIVITY_SEQUENCE; }
     @Override public Integer getProgressPct() {
-        if (TOTAL_SEQUENCES_TO_COMPLETE == 0) return null;
-        return Math.min(100, completedSequences * 100 / TOTAL_SEQUENCES_TO_COMPLETE);
+        if (totalRounds == 0) return null;
+        return Math.min(100, completedRounds * 100 / totalRounds);
     }
 }

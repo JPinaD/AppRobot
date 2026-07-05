@@ -76,6 +76,14 @@ public class TurnsActivity extends AppCompatActivity {
         }
     };
 
+    private final BroadcastReceiver tiltAlertReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (getSupportFragmentManager().findFragmentByTag(TiltAlertDialogFragment.TAG) == null) {
+                new TiltAlertDialogFragment().show(getSupportFragmentManager(), TiltAlertDialogFragment.TAG);
+            }
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -141,6 +149,7 @@ public class TurnsActivity extends AppCompatActivity {
         lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
         lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
         lbm.registerReceiver(turnSignalReceiver, new IntentFilter(AppConstants.ACTION_TURN_SIGNAL));
+        lbm.registerReceiver(tiltAlertReceiver, new IntentFilter(AppConstants.ACTION_TILT_ALERT));
 
         // In solo mode, start first turn after a brief delay
         handler.postDelayed(() -> viewModel.startSoloTurn(), 1000);
@@ -155,6 +164,7 @@ public class TurnsActivity extends AppCompatActivity {
         lbm.unregisterReceiver(pauseReceiver);
         lbm.unregisterReceiver(resumeReceiver);
         lbm.unregisterReceiver(turnSignalReceiver);
+        lbm.unregisterReceiver(tiltAlertReceiver);
     }
 
     private void buildLayout() {

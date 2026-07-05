@@ -1,5 +1,7 @@
 package com.example.approbot.viewmodel;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.lifecycle.LiveData;
@@ -23,18 +25,24 @@ import java.util.List;
  * ViewModel para la actividad de Reconocimiento Emocional.
  *
  * Feedback para actividades con casillas:
- * - Acierto: MOVE_TIMED FORWARD (avanza una casilla). Sin CELEBRATE.
+ * - Acierto: MOVE_TIMED FORWARD (avanza una casilla).
  * - Último acierto: MOVE_TIMED FORWARD + esperar MOVE_DONE + DANCE (celebración de final).
- * - Fallo: DENY (oscilación servo, sin movimiento de motores).
+ * - Fallo: feedback visual suave en pantalla (sin movimiento del robot).
+ *   Muestra mensaje de ánimo, resalta opción correcta tras 2s, avanza tras 4s total.
  */
 public class EmotionViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "EmotionViewModel";
 
+    /** Duración del feedback visual de fallo antes de resaltar la correcta (ms). */
+    private static final long WRONG_HIGHLIGHT_DELAY_MS = 2000;
+    /** Duración total del feedback de fallo antes de avanzar (ms). */
+    private static final long WRONG_ADVANCE_DELAY_MS = 4000;
+
     public enum State {
         SHOWING,           // Mostrando opciones, esperando input del alumno
         CORRECT_ADVANCING, // Acierto: avanzando casilla (MOVE_TIMED enviado)
-        WRONG,             // Fallo: DENY enviado
+        WRONG_SHOWING,     // Fallo: mostrando mensaje suave, luego resalta correcta
         COMPLETING,        // Último acierto: MOVE_TIMED enviado, esperando MOVE_DONE para enviar DANCE
         DANCING,           // DANCE enviado, esperando DANCE_DONE
         COMPLETED          // Fin: DANCE_DONE recibido, mostrar felicitación
@@ -42,6 +50,8 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
 
     private final MutableLiveData<State> state = new MutableLiveData<>(State.SHOWING);
     private final MutableLiveData<Integer> progress = new MutableLiveData<>(0);
+    /** Emits true when it's time to highlight the correct option (2s into WRONG_SHOWING). */
+    private final MutableLiveData<Boolean> highlightCorrect = new MutableLiveData<>(false);
 
     private TcpServer tcpServer;
     private BluetoothRobotManager btManager;
@@ -52,6 +62,8 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
     private int currentRound = 0;
     private String correctEmotionId;
     private String previousEmotionId;
+
+    private final Handler wrongHandler = new Handler(Looper.getMainLooper());
 
     public void init(TcpServer tcpServer, BluetoothRobotManager btManager,
                      String sessionId, List<String> items, int rounds) {
@@ -65,6 +77,7 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
 
     public LiveData<State> getState() { return state; }
     public LiveData<Integer> getProgress() { return progress; }
+    public LiveData<Boolean> getHighlightCorrect() { return highlightCorrect; }
     public String getCorrectEmotionId() { return correctEmotionId; }
     public int getTotalRounds() { return totalRounds; }
     public int getCurrentRound() { return currentRound; }
@@ -85,9 +98,9 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
 
     /**
      * Alumno selecciona una opción.
-     * - Acierto: envía MOVE_TIMED FORWARD directamente (sin CELEBRATE).
+     * - Acierto: envía MOVE_TIMED FORWARD directamente.
      *   Si es la última ronda, pasa a estado COMPLETING (espera MOVE_DONE para enviar DANCE).
-     * - Fallo: envía DENY, transiciona a WRONG.
+     * - Fallo: NO envía DENY. Muestra feedback visual suave durante 4s y avanza.
      */
     public void onOptionSelected(String selectedId) {
         boolean correct = selectedId.equals(correctEmotionId);
@@ -95,20 +108,25 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
 
         if (correct) {
             currentRound++;
-            progress.postValue(currentRound);
+            // Only post progress if not the final round (avoids display showing round N+1/N)
+            if (currentRound < totalRounds) {
+                progress.postValue(currentRound);
+            }
 
             if (currentRound >= totalRounds) {
                 // Última ronda: avanzar casilla y luego DANCE
                 state.postValue(State.COMPLETING);
-                sendMoveTimed("FORWARD", 600);
+                sendMoveTimed("FORWARD", 800);
             } else {
                 // Ronda normal: solo avanzar casilla
                 state.postValue(State.CORRECT_ADVANCING);
-                sendMoveTimed("FORWARD", 600);
+                sendMoveTimed("FORWARD", 800);
             }
         } else {
-            state.postValue(State.WRONG);
-            sendDeny();
+            // Fallo: feedback visual suave sin DENY
+            highlightCorrect.postValue(false);
+            state.postValue(State.WRONG_SHOWING);
+            scheduleWrongAdvance();
         }
     }
 
@@ -139,15 +157,6 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
     }
 
     /**
-     * Llamado cuando se recibe DENY_DONE del Arduino.
-     * Vuelve al estado SHOWING para permitir reintento.
-     */
-    public void onDenyDone() {
-        if (state.getValue() != State.WRONG) return;
-        state.postValue(State.SHOWING);
-    }
-
-    /**
      * Fallback: si no llega el DONE (por BT inestable), la Activity puede
      * llamar a este método tras un timeout para forzar la transición.
      */
@@ -161,10 +170,41 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
     }
 
     /**
-     * Fallback: si no llega DENY_DONE, la Activity puede forzar el reset.
+     * Fallback: if the wrong feedback timer somehow doesn't fire,
+     * the Activity can force the reset.
      */
     public void resetAfterWrong() {
+        wrongHandler.removeCallbacksAndMessages(null);
+        highlightCorrect.postValue(false);
+        pickNextEmotion();
         state.postValue(State.SHOWING);
+    }
+
+    @Override
+    protected void onCleared() {
+        super.onCleared();
+        wrongHandler.removeCallbacksAndMessages(null);
+    }
+
+    // --- Private ---
+
+    /**
+     * Schedules the soft feedback sequence for a wrong answer:
+     * 1. After 2s: highlight the correct option.
+     * 2. After 4s total: advance to next emotion.
+     */
+    private void scheduleWrongAdvance() {
+        wrongHandler.removeCallbacksAndMessages(null);
+
+        // After 2s: signal to highlight the correct option
+        wrongHandler.postDelayed(() -> highlightCorrect.postValue(true), WRONG_HIGHLIGHT_DELAY_MS);
+
+        // After 4s: advance to next emotion
+        wrongHandler.postDelayed(() -> {
+            highlightCorrect.postValue(false);
+            pickNextEmotion();
+            state.postValue(State.SHOWING);
+        }, WRONG_ADVANCE_DELAY_MS);
     }
 
     private void pickNextEmotion() {
@@ -184,7 +224,11 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
         list.add("emotion_scared");
         list.add("emotion_disgusted");
         list.add("emotion_calm");
-        list.add("emotion_love");
+        list.add("emotion_shy");
+        list.add("emotion_bored");
+        list.add("emotion_tired");
+        list.add("emotion_excited");
+        list.add("emotion_terror");
         return list;
     }
 
@@ -205,11 +249,6 @@ public class EmotionViewModel extends ViewModel implements ActivityStatusProvide
         } catch (JSONException e) {
             Log.e(TAG, "Error enviando resultado", e);
         }
-    }
-
-    private void sendDeny() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
     }
 
     private void sendMoveTimed(String dir, int ms) {

@@ -38,6 +38,11 @@ public class BluetoothRobotManager {
     private Context connectContext;
     private String connectMac;
 
+    /** Returns true if the BT socket is connected and the read loop is active. */
+    public boolean isConnected() {
+        return running && socket != null;
+    }
+
     public void setListener(BluetoothRobotListener listener) {
         this.listener = listener;
     }

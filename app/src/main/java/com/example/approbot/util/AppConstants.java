@@ -12,9 +12,12 @@ public class AppConstants {
     public static final String MSG_ACTIVITY_RESULT    = "ACTIVITY_RESULT";
     public static final String MSG_PICTOGRAM_SELECTED = "PICTOGRAM_SELECTED";
     public static final String MSG_ROBOT_FEEDBACK     = "ROBOT_FEEDBACK";
-    public static final String MSG_SERVO_COMMAND      = "SERVO_COMMAND";
     public static final String MSG_TURN_SIGNAL        = "TURN_SIGNAL";
     public static final String MSG_TURN_DONE          = "TURN_DONE";
+
+    /** @deprecated Servo ya no se usa como feedback. El comando se mantiene en firmware pero no se envía. */
+    @Deprecated
+    public static final String MSG_SERVO_COMMAND      = "SERVO_COMMAND";
 
     // IDs de actividades
     public static final String ACTIVITY_PICTOGRAM        = "activity_pictogram";
@@ -48,10 +51,13 @@ public class AppConstants {
 
     // Broadcasts locales para comandos BT DONE (feedback estandarizado)
     public static final String ACTION_CELEBRATE_DONE = "com.example.approbot.ACTION_CELEBRATE_DONE";
-    public static final String ACTION_DENY_DONE      = "com.example.approbot.ACTION_DENY_DONE";
     public static final String ACTION_MOVE_DONE      = "com.example.approbot.ACTION_MOVE_DONE";
     public static final String ACTION_DANCE_DONE     = "com.example.approbot.ACTION_DANCE_DONE";
     public static final String ACTION_BLOCKED        = "com.example.approbot.ACTION_BLOCKED";
+
+    /** @deprecated DENY ya no se usa. Feedback de fallo ahora es visual/TTS sin movimiento del servo. */
+    @Deprecated
+    public static final String ACTION_DENY_DONE      = "com.example.approbot.ACTION_DENY_DONE";
 
     // Persistencia de sesión activa
     public static final String PREF_ACTIVE_SESSION = "active_session";
@@ -69,8 +75,6 @@ public class AppConstants {
     public static final String MSG_ROBOT_STATUS    = "ROBOT_STATUS";
     public static final String MSG_CELEBRATE       = "CELEBRATE";
     public static final String MSG_CELEBRATE_DONE  = "CELEBRATE_DONE";
-    public static final String MSG_DENY            = "DENY";
-    public static final String MSG_DENY_DONE       = "DENY_DONE";
     public static final String MSG_MOVE_TIMED      = "MOVE_TIMED";
     public static final String MSG_MOVE_DONE       = "MOVE_DONE";
     public static final String MSG_BREATHE_START   = "BREATHE_START";
@@ -78,6 +82,14 @@ public class AppConstants {
     public static final String MSG_BLOCKED         = "BLOCKED";
     public static final String MSG_DANCE           = "DANCE";
     public static final String MSG_DANCE_DONE      = "DANCE_DONE";
+
+    /** @deprecated DENY ya no se envía al Arduino. Feedback de fallo es visual/TTS. */
+    @Deprecated
+    public static final String MSG_DENY            = "DENY";
+
+    /** @deprecated DENY_DONE ya no se recibe/usa. */
+    @Deprecated
+    public static final String MSG_DENY_DONE       = "DENY_DONE";
 
     // Seguridad: detección de vuelco (MPU-6050)
     public static final String MSG_TILT_ALERT      = "TILT_ALERT";

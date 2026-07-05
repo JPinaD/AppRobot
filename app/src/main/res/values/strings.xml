@@ -22,10 +22,18 @@
     <string name="emotion_scared">Miedo</string>
     <string name="emotion_disgusted">Asco</string>
     <string name="emotion_calm">Calma</string>
-    <string name="emotion_love">Amor</string>
+    <string name="emotion_shy">Vergüenza</string>
+    <string name="emotion_bored">Aburrimiento</string>
+    <string name="emotion_tired">Cansancio</string>
+    <string name="emotion_excited">Emoción</string>
+    <string name="emotion_terror">Terror</string>
     <string name="emotion_question">¿Cuál es igual?</string>
     <string name="emotion_completed">¡Completado!</string>
     <string name="emotion_progress">Ronda %1$d de %2$d</string>
+
+    <!-- Feedback suave de fallo (sin movimiento del robot) -->
+    <string name="wrong_try_again">Vamos a intentarlo de nuevo</string>
+    <string name="social_correct_was">La respuesta correcta era: %1$s</string>
 
     <!-- Actividad social -->
     <string name="social_option_a">Opción A</string>
@@ -35,6 +43,7 @@
     <string name="sequence_watch">¡Mira la secuencia!</string>
     <string name="sequence_repeat">¡Ahora repítela!</string>
     <string name="sequence_correct">¡Muy bien!</string>
+    <string name="sequence_correct_next">¡Muy bien! ¡Vamos a por la siguiente!</string>
 
     <!-- Actividad calma -->
     <string name="calm_breathe">Respira…</string>

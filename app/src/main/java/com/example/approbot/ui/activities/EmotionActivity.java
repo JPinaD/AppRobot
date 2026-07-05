@@ -8,7 +8,6 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.GridLayout;
@@ -25,6 +24,7 @@ import com.example.approbot.R;
 import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
+import com.example.approbot.util.TtsHelper;
 import com.example.approbot.viewmodel.EmotionViewModel;
 
 import org.json.JSONException;
@@ -32,7 +32,6 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Activity de Reconocimiento Emocional.
@@ -40,7 +39,7 @@ import java.util.Locale;
  * Feedback para actividades con casillas:
  * - Acierto: fondo verde + MOVE_TIMED FORWARD (avanza casilla) → MOVE_DONE → siguiente
  * - Último acierto: MOVE_TIMED FORWARD → MOVE_DONE → DANCE → DANCE_DONE → felicitación
- * - Fallo: sin color negativo + DENY → DENY_DONE → reintento
+ * - Fallo: mensaje suave + TTS + resaltar correcta tras 2s → avanza tras 4s (sin movimiento robot)
  */
 public class EmotionActivity extends AppCompatActivity {
 
@@ -51,10 +50,11 @@ public class EmotionActivity extends AppCompatActivity {
 
     private static final int COLOR_CORRECT = 0xFFC8E6C9;
     private static final int COLOR_NEUTRAL = 0xFFFAFAFA;
+    /** Color neutro para resaltar la opción correcta en fallo (sin rojo). */
+    private static final int COLOR_HIGHLIGHT_CORRECT = 0xFFB3E5FC;
 
     // Timeout de seguridad: si no llega DONE del Arduino, avanzar igualmente
     private static final long MOVE_TIMEOUT_MS = 2500;
-    private static final long DENY_TIMEOUT_MS = 2500;
     private static final long DANCE_TIMEOUT_MS = 5000;
 
     private EmotionViewModel viewModel;
@@ -64,17 +64,15 @@ public class EmotionActivity extends AppCompatActivity {
     private TextView tvProgress;
     private ProgressBar progressBar;
     private TextView tvQuestion;
+    private TextView tvWrongMessage;
 
     private StudentProfile studentProfile;
     private CalmFabHelper calmFabHelper;
 
-    private TextToSpeech tts;
-    private boolean ttsReady = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // --- Runnables de timeout (por si no llega el DONE del Arduino) ---
     private final Runnable moveTimeout = () -> viewModel.advanceAfterCorrect();
-    private final Runnable denyTimeout = () -> viewModel.resetAfterWrong();
     private final Runnable danceTimeout = () -> viewModel.onDanceDone();
 
     // --- BroadcastReceivers ---
@@ -95,27 +93,24 @@ public class EmotionActivity extends AppCompatActivity {
         }
     };
 
-    private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) {
-            // No-op for EmotionActivity — this activity does not send CELEBRATE
-        }
-    };
     private final BroadcastReceiver moveDoneReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             handler.removeCallbacks(moveTimeout);
             viewModel.onMoveDone();
         }
     };
-    private final BroadcastReceiver denyDoneReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) {
-            handler.removeCallbacks(denyTimeout);
-            viewModel.onDenyDone();
-        }
-    };
     private final BroadcastReceiver danceDoneReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             handler.removeCallbacks(danceTimeout);
             viewModel.onDanceDone();
+        }
+    };
+
+    private final BroadcastReceiver tiltAlertReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (getSupportFragmentManager().findFragmentByTag(TiltAlertDialogFragment.TAG) == null) {
+                new TiltAlertDialogFragment().show(getSupportFragmentManager(), TiltAlertDialogFragment.TAG);
+            }
         }
     };
 
@@ -126,13 +121,6 @@ public class EmotionActivity extends AppCompatActivity {
         String sessionId = getIntent().getStringExtra(EXTRA_SESSION_ID);
         ArrayList<String> items = getIntent().getStringArrayListExtra(EXTRA_ITEMS);
         int steps = getIntent().getIntExtra(EXTRA_STEPS, 3);
-
-        tts = new TextToSpeech(this, status -> {
-            if (status == TextToSpeech.SUCCESS) {
-                tts.setLanguage(new Locale("es", "ES"));
-                ttsReady = true;
-            }
-        });
 
         buildLayout();
 
@@ -163,6 +151,7 @@ public class EmotionActivity extends AppCompatActivity {
                     // Acierto: fondo verde, opciones deshabilitadas, robot avanzando
                     root.setBackgroundColor(COLOR_CORRECT);
                     setOptionsEnabled(false);
+                    tvWrongMessage.setVisibility(View.GONE);
                     handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
@@ -170,6 +159,7 @@ public class EmotionActivity extends AppCompatActivity {
                     // Última casilla avanzando (MOVE_TIMED enviado, espera MOVE_DONE para DANCE)
                     root.setBackgroundColor(COLOR_CORRECT);
                     setOptionsEnabled(false);
+                    tvWrongMessage.setVisibility(View.GONE);
                     handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
@@ -181,18 +171,23 @@ public class EmotionActivity extends AppCompatActivity {
                     tvQuestion.setTextSize(28f);
                     gridOptions.removeAllViews();
                     ivExample.setVisibility(View.GONE);
+                    tvWrongMessage.setVisibility(View.GONE);
                     handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
                     break;
 
-                case WRONG:
-                    // Sin color negativo (principio TEA: ausencia de feedback negativo)
+                case WRONG_SHOWING:
+                    // Fallo: sin color negativo, mensaje suave, opciones deshabilitadas
+                    root.setBackgroundColor(COLOR_NEUTRAL);
                     setOptionsEnabled(false);
-                    // Timeout de seguridad por si no llega DENY_DONE
-                    handler.postDelayed(denyTimeout, DENY_TIMEOUT_MS);
+                    tvWrongMessage.setText(R.string.wrong_try_again);
+                    tvWrongMessage.setVisibility(View.VISIBLE);
+                    // Speak soft feedback via TTS
+                    TtsHelper.getInstance().speak(getString(R.string.wrong_try_again));
                     break;
 
                 case SHOWING:
                     root.setBackgroundColor(COLOR_NEUTRAL);
+                    tvWrongMessage.setVisibility(View.GONE);
                     showRound();
                     setOptionsEnabled(true);
                     break;
@@ -204,8 +199,16 @@ public class EmotionActivity extends AppCompatActivity {
                     tvQuestion.setTextSize(28f);
                     gridOptions.removeAllViews();
                     ivExample.setVisibility(View.GONE);
+                    tvWrongMessage.setVisibility(View.GONE);
                     handler.postDelayed(this::finish, 2500);
                     break;
+            }
+        });
+
+        // Observe highlight signal for wrong answers
+        viewModel.getHighlightCorrect().observe(this, highlight -> {
+            if (highlight != null && highlight) {
+                highlightCorrectOption();
             }
         });
 
@@ -219,25 +222,22 @@ public class EmotionActivity extends AppCompatActivity {
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
         lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
         lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
-        lbm.registerReceiver(celebrateDoneReceiver, new IntentFilter(AppConstants.ACTION_CELEBRATE_DONE));
         lbm.registerReceiver(moveDoneReceiver, new IntentFilter(AppConstants.ACTION_MOVE_DONE));
-        lbm.registerReceiver(denyDoneReceiver, new IntentFilter(AppConstants.ACTION_DENY_DONE));
         lbm.registerReceiver(danceDoneReceiver, new IntentFilter(AppConstants.ACTION_DANCE_DONE));
+        lbm.registerReceiver(tiltAlertReceiver, new IntentFilter(AppConstants.ACTION_TILT_ALERT));
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         handler.removeCallbacksAndMessages(null);
-        if (tts != null) { tts.stop(); tts.shutdown(); }
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
         lbm.unregisterReceiver(sessionEndReceiver);
         lbm.unregisterReceiver(pauseReceiver);
         lbm.unregisterReceiver(resumeReceiver);
-        lbm.unregisterReceiver(celebrateDoneReceiver);
         lbm.unregisterReceiver(moveDoneReceiver);
-        lbm.unregisterReceiver(denyDoneReceiver);
         lbm.unregisterReceiver(danceDoneReceiver);
+        lbm.unregisterReceiver(tiltAlertReceiver);
     }
 
     private void buildLayout() {
@@ -245,22 +245,31 @@ public class EmotionActivity extends AppCompatActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackgroundColor(COLOR_NEUTRAL);
-        root.setPadding(32, 32, 32, 32);
+        // Extra top padding to avoid camera/notch clipping
+        root.setPadding(32, dpToPx(52), 32, 32);
         setContentView(root);
+
+        // --- Top section (~35% of screen): progress + question + example image ---
+        LinearLayout topSection = new LinearLayout(this);
+        topSection.setOrientation(LinearLayout.VERTICAL);
+        topSection.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams topParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 35f);
+        topSection.setLayoutParams(topParams);
 
         // Progress
         tvProgress = new TextView(this);
         tvProgress.setTextSize(16f);
         tvProgress.setTextColor(Color.parseColor("#616161"));
         tvProgress.setGravity(Gravity.CENTER);
-        root.addView(tvProgress);
+        topSection.addView(tvProgress);
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         LinearLayout.LayoutParams pbParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 16);
-        pbParams.setMargins(32, 8, 32, 16);
+                LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(8));
+        pbParams.setMargins(32, 8, 32, 12);
         progressBar.setLayoutParams(pbParams);
-        root.addView(progressBar);
+        topSection.addView(progressBar);
 
         // Question
         tvQuestion = new TextView(this);
@@ -268,28 +277,63 @@ public class EmotionActivity extends AppCompatActivity {
         tvQuestion.setTextSize(22f);
         tvQuestion.setTextColor(Color.parseColor("#212121"));
         tvQuestion.setGravity(Gravity.CENTER);
-        tvQuestion.setPadding(0, 0, 0, 16);
-        root.addView(tvQuestion);
+        tvQuestion.setPadding(0, 0, 0, 8);
+        topSection.addView(tvQuestion);
 
-        // Example pictogram (large, tappable for TTS)
+        // Wrong message (initially hidden)
+        tvWrongMessage = new TextView(this);
+        tvWrongMessage.setTextSize(20f);
+        tvWrongMessage.setTextColor(Color.parseColor("#5D4037"));
+        tvWrongMessage.setGravity(Gravity.CENTER);
+        tvWrongMessage.setPadding(16, 8, 16, 8);
+        tvWrongMessage.setVisibility(View.GONE);
+        topSection.addView(tvWrongMessage);
+
+        // Example pictogram (fills remaining top space, visually highlighted)
         ivExample = new ImageView(this);
-        LinearLayout.LayoutParams exParams = new LinearLayout.LayoutParams(280, 280);
+        LinearLayout.LayoutParams exParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, 0, 1.3f);
         exParams.gravity = Gravity.CENTER_HORIZONTAL;
-        exParams.bottomMargin = 32;
+        exParams.bottomMargin = 8;
         ivExample.setLayoutParams(exParams);
+        ivExample.setAdjustViewBounds(true);
+        ivExample.setScaleType(ImageView.ScaleType.FIT_CENTER);
         ivExample.setContentDescription(getString(R.string.emotion_question));
-        root.addView(ivExample);
+        // Blue soft border to distinguish from grid options
+        android.graphics.drawable.GradientDrawable exBorder = new android.graphics.drawable.GradientDrawable();
+        exBorder.setColor(0xFFFFFFFF); // white background
+        exBorder.setStroke(dpToPx(3), 0xFF4A90D9); // 3dp blue border
+        exBorder.setCornerRadius(dpToPx(12)); // rounded corners
+        ivExample.setBackground(exBorder);
+        ivExample.setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+        ivExample.setClipToOutline(true);
+        topSection.addView(ivExample);
 
-        // Grid for 4 options (2x2)
+        root.addView(topSection);
+
+        // --- Bottom section (~65% of screen): options grid that fills available space ---
+        LinearLayout bottomSection = new LinearLayout(this);
+        bottomSection.setOrientation(LinearLayout.VERTICAL);
+        bottomSection.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams botParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 65f);
+        bottomSection.setLayoutParams(botParams);
+
+        // Grid for 4 options (2x2) — fills the bottom section
         gridOptions = new GridLayout(this);
         gridOptions.setColumnCount(2);
         gridOptions.setRowCount(2);
         gridOptions.setAlignmentMode(GridLayout.ALIGN_MARGINS);
         LinearLayout.LayoutParams gridParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        gridParams.gravity = Gravity.CENTER_HORIZONTAL;
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
         gridOptions.setLayoutParams(gridParams);
-        root.addView(gridOptions);
+        bottomSection.addView(gridOptions);
+
+        root.addView(bottomSection);
+    }
+
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private void showRound() {
@@ -301,30 +345,49 @@ public class EmotionActivity extends AppCompatActivity {
         ivExample.setVisibility(View.VISIBLE);
         ivExample.setOnClickListener(v -> speakEmotion(correctId));
 
-        // Build options grid
+        // Build options grid (2x2, each cell fills equally)
         List<String> options = viewModel.buildOptions();
         gridOptions.removeAllViews();
-        for (String optionId : options) {
+        for (int i = 0; i < options.size(); i++) {
+            String optionId = options.get(i);
             ImageView iv = new ImageView(this);
             int optRes = getDrawableId(optionId);
             if (optRes != 0) iv.setImageResource(optRes);
 
+            // Use GridLayout specs with weight to fill space equally
             GridLayout.LayoutParams gp = new GridLayout.LayoutParams();
-            gp.width = 200;
-            gp.height = 200;
-            gp.setMargins(16, 16, 16, 16);
+            gp.rowSpec = GridLayout.spec(i / 2, 1f);
+            gp.columnSpec = GridLayout.spec(i % 2, 1f);
+            gp.width = 0;
+            gp.height = 0;
+            gp.setMargins(12, 12, 12, 12);
             iv.setLayoutParams(gp);
+            iv.setAdjustViewBounds(true);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
             iv.setContentDescription(emotionLabel(optionId));
             iv.setBackgroundColor(Color.WHITE);
-            iv.setPadding(12, 12, 12, 12);
+            iv.setPadding(16, 16, 16, 16);
+            iv.setTag(optionId); // Tag for highlighting later
 
             iv.setOnClickListener(v -> {
                 viewModel.onOptionSelected(optionId);
-                if (!optionId.equals(viewModel.getCorrectEmotionId())) {
-                    speakEmotion(optionId);
-                }
             });
             gridOptions.addView(iv);
+        }
+    }
+
+    /**
+     * Highlights the correct option with a neutral blue border/background.
+     * Called when highlightCorrect LiveData becomes true (2s after wrong answer).
+     */
+    private void highlightCorrectOption() {
+        String correctId = viewModel.getCorrectEmotionId();
+        for (int i = 0; i < gridOptions.getChildCount(); i++) {
+            View child = gridOptions.getChildAt(i);
+            if (correctId.equals(child.getTag())) {
+                child.setBackgroundColor(COLOR_HIGHLIGHT_CORRECT);
+                break;
+            }
         }
     }
 
@@ -342,9 +405,8 @@ public class EmotionActivity extends AppCompatActivity {
     }
 
     private void speakEmotion(String emotionId) {
-        if (!ttsReady) return;
         String label = emotionLabel(emotionId);
-        tts.speak(label, TextToSpeech.QUEUE_FLUSH, null, emotionId);
+        TtsHelper.getInstance().speak(label);
     }
 
     private int getDrawableId(String emotionId) {
@@ -360,7 +422,11 @@ public class EmotionActivity extends AppCompatActivity {
             case "emotion_scared": return getString(R.string.emotion_scared);
             case "emotion_disgusted": return getString(R.string.emotion_disgusted);
             case "emotion_calm": return getString(R.string.emotion_calm);
-            case "emotion_love": return getString(R.string.emotion_love);
+            case "emotion_shy": return getString(R.string.emotion_shy);
+            case "emotion_bored": return getString(R.string.emotion_bored);
+            case "emotion_tired": return getString(R.string.emotion_tired);
+            case "emotion_excited": return getString(R.string.emotion_excited);
+            case "emotion_terror": return getString(R.string.emotion_terror);
             default: return emotionId;
         }
     }

@@ -22,10 +22,13 @@ import com.example.approbot.data.model.SessionConfig;
 import com.example.approbot.data.model.StudentProfile;
 import com.example.approbot.network.SessionNetworkHolder;
 import com.example.approbot.util.AppConstants;
+import com.example.approbot.util.TtsHelper;
 import com.example.approbot.viewmodel.SocialViewModel;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import com.example.approbot.R;
 
 /**
  * Activity de Escenarios Sociales.
@@ -33,7 +36,7 @@ import org.json.JSONObject;
  * Feedback para actividades con casillas:
  * - Acierto: fondo verde + MOVE_TIMED FORWARD (avanza casilla) → MOVE_DONE → siguiente
  * - Último acierto: MOVE_TIMED FORWARD → MOVE_DONE → DANCE → DANCE_DONE → felicitación
- * - Fallo: sin color rojo negativo + DENY → DENY_DONE → nuevo escenario
+ * - Fallo: mensaje suave + TTS + muestra respuesta correcta (sin movimiento robot)
  */
 public class SocialActivity extends AppCompatActivity {
 
@@ -46,7 +49,6 @@ public class SocialActivity extends AppCompatActivity {
 
     // Timeouts de seguridad por si no llega DONE del Arduino
     private static final long MOVE_TIMEOUT_MS = 2500;
-    private static final long DENY_TIMEOUT_MS = 2500;
     private static final long DANCE_TIMEOUT_MS = 5000;
 
     private SocialViewModel viewModel;
@@ -58,6 +60,7 @@ public class SocialActivity extends AppCompatActivity {
     private Button btnOptionB;
     private TextView tvFeedback;
     private TextView tvCorrectHint;
+    private TextView tvWrongMessage;
 
     private StudentProfile studentProfile;
     private CalmFabHelper calmFabHelper;
@@ -66,7 +69,6 @@ public class SocialActivity extends AppCompatActivity {
 
     // --- Runnables de timeout ---
     private final Runnable moveTimeout = () -> viewModel.advanceToNext();
-    private final Runnable denyTimeout = () -> viewModel.retryAfterWrong();
     private final Runnable danceTimeout = () -> viewModel.onDanceDone();
 
     // --- BroadcastReceivers ---
@@ -87,27 +89,24 @@ public class SocialActivity extends AppCompatActivity {
         }
     };
 
-    private final BroadcastReceiver celebrateDoneReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) {
-            // No-op for SocialActivity — this activity does not send CELEBRATE
-        }
-    };
     private final BroadcastReceiver moveDoneReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             handler.removeCallbacks(moveTimeout);
             viewModel.onMoveDone();
         }
     };
-    private final BroadcastReceiver denyDoneReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) {
-            handler.removeCallbacks(denyTimeout);
-            viewModel.onDenyDone();
-        }
-    };
     private final BroadcastReceiver danceDoneReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             handler.removeCallbacks(danceTimeout);
             viewModel.onDanceDone();
+        }
+    };
+
+    private final BroadcastReceiver tiltAlertReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (getSupportFragmentManager().findFragmentByTag(TiltAlertDialogFragment.TAG) == null) {
+                new TiltAlertDialogFragment().show(getSupportFragmentManager(), TiltAlertDialogFragment.TAG);
+            }
         }
     };
 
@@ -156,6 +155,7 @@ public class SocialActivity extends AppCompatActivity {
                     setOptionsEnabled(true);
                     tvFeedback.setVisibility(android.view.View.GONE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
+                    tvWrongMessage.setVisibility(android.view.View.GONE);
                     break;
 
                 case CORRECT_ADVANCING:
@@ -165,20 +165,21 @@ public class SocialActivity extends AppCompatActivity {
                     tvFeedback.setText(state.feedbackText);
                     tvFeedback.setVisibility(android.view.View.VISIBLE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
+                    tvWrongMessage.setVisibility(android.view.View.GONE);
                     handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
-                case WRONG:
-                    // Sin color rojo (principio TEA: ausencia de feedback negativo explícito)
-                    // Usar fondo neutro en vez de rojo
+                case WRONG_SHOWING:
+                    // Fallo: sin color negativo, mensaje suave + respuesta correcta
                     root.setBackgroundColor(COLOR_NEUTRAL);
                     setOptionsEnabled(false);
-                    tvFeedback.setText(state.feedbackText);
-                    tvFeedback.setVisibility(android.view.View.VISIBLE);
-                    tvCorrectHint.setText("La respuesta correcta era: " + state.correctText);
+                    tvWrongMessage.setText(R.string.wrong_try_again);
+                    tvWrongMessage.setVisibility(android.view.View.VISIBLE);
+                    tvFeedback.setVisibility(android.view.View.GONE);
+                    tvCorrectHint.setText(getString(R.string.social_correct_was, state.correctText));
                     tvCorrectHint.setVisibility(android.view.View.VISIBLE);
-                    // Timeout de seguridad por si no llega DENY_DONE
-                    handler.postDelayed(denyTimeout, DENY_TIMEOUT_MS);
+                    // Speak soft feedback via TTS
+                    TtsHelper.getInstance().speak(getString(R.string.wrong_try_again));
                     break;
 
                 case COMPLETING:
@@ -188,6 +189,7 @@ public class SocialActivity extends AppCompatActivity {
                     tvFeedback.setText(state.feedbackText);
                     tvFeedback.setVisibility(android.view.View.VISIBLE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
+                    tvWrongMessage.setVisibility(android.view.View.GONE);
                     handler.postDelayed(moveTimeout, MOVE_TIMEOUT_MS);
                     break;
 
@@ -200,6 +202,7 @@ public class SocialActivity extends AppCompatActivity {
                     btnOptionB.setVisibility(android.view.View.GONE);
                     tvFeedback.setVisibility(android.view.View.GONE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
+                    tvWrongMessage.setVisibility(android.view.View.GONE);
                     handler.postDelayed(danceTimeout, DANCE_TIMEOUT_MS);
                     break;
 
@@ -212,6 +215,7 @@ public class SocialActivity extends AppCompatActivity {
                     btnOptionB.setVisibility(android.view.View.GONE);
                     tvFeedback.setVisibility(android.view.View.GONE);
                     tvCorrectHint.setVisibility(android.view.View.GONE);
+                    tvWrongMessage.setVisibility(android.view.View.GONE);
                     break;
             }
         });
@@ -221,10 +225,9 @@ public class SocialActivity extends AppCompatActivity {
         lbm.registerReceiver(sessionEndReceiver, new IntentFilter(AppConstants.ACTION_SESSION_END));
         lbm.registerReceiver(pauseReceiver, new IntentFilter(AppConstants.ACTION_SESSION_PAUSE));
         lbm.registerReceiver(resumeReceiver, new IntentFilter(AppConstants.ACTION_SESSION_RESUME));
-        lbm.registerReceiver(celebrateDoneReceiver, new IntentFilter(AppConstants.ACTION_CELEBRATE_DONE));
         lbm.registerReceiver(moveDoneReceiver, new IntentFilter(AppConstants.ACTION_MOVE_DONE));
-        lbm.registerReceiver(denyDoneReceiver, new IntentFilter(AppConstants.ACTION_DENY_DONE));
         lbm.registerReceiver(danceDoneReceiver, new IntentFilter(AppConstants.ACTION_DANCE_DONE));
+        lbm.registerReceiver(tiltAlertReceiver, new IntentFilter(AppConstants.ACTION_TILT_ALERT));
     }
 
     @Override
@@ -235,10 +238,9 @@ public class SocialActivity extends AppCompatActivity {
         lbm.unregisterReceiver(sessionEndReceiver);
         lbm.unregisterReceiver(pauseReceiver);
         lbm.unregisterReceiver(resumeReceiver);
-        lbm.unregisterReceiver(celebrateDoneReceiver);
         lbm.unregisterReceiver(moveDoneReceiver);
-        lbm.unregisterReceiver(denyDoneReceiver);
         lbm.unregisterReceiver(danceDoneReceiver);
+        lbm.unregisterReceiver(tiltAlertReceiver);
     }
 
     private void buildLayout() {
@@ -268,6 +270,15 @@ public class SocialActivity extends AppCompatActivity {
         tvDescription.setGravity(Gravity.CENTER);
         tvDescription.setPadding(16, 0, 16, 32);
         root.addView(tvDescription);
+
+        // Wrong message (initially hidden) — shown during WRONG_SHOWING state
+        tvWrongMessage = new TextView(this);
+        tvWrongMessage.setTextSize(20f);
+        tvWrongMessage.setTextColor(Color.parseColor("#5D4037"));
+        tvWrongMessage.setGravity(Gravity.CENTER);
+        tvWrongMessage.setPadding(16, 16, 16, 16);
+        tvWrongMessage.setVisibility(android.view.View.GONE);
+        root.addView(tvWrongMessage);
 
         LinearLayout btnRow = new LinearLayout(this);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);

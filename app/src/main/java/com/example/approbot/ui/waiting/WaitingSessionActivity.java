@@ -40,6 +40,7 @@ import com.example.approbot.ui.activities.TurnsActivity;
 import com.example.approbot.kiosk.KioskModeManager;
 import com.example.approbot.ui.pictogram.PictogramActivity;
 import com.example.approbot.util.AppConstants;
+import com.example.approbot.util.TtsHelper;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -124,6 +125,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 getIntent().getStringExtra("profile_description"));
 
         KioskModeManager.enter(this);
+        TtsHelper.getInstance().init(this);
         Intent serviceIntent = new Intent(this, RobotNetworkService.class);
         startService(serviceIntent);
         bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
@@ -479,8 +481,8 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                             .sendBroadcast(new Intent(AppConstants.ACTION_CELEBRATE_DONE)));
                     break;
                 case AppConstants.MSG_DENY_DONE:
-                    runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
-                            .sendBroadcast(new Intent(AppConstants.ACTION_DENY_DONE)));
+                    // DEPRECATED: Servo no longer used. DENY_DONE ignored.
+                    Log.d(TAG, "DENY_DONE received but ignored (servo disabled)");
                     break;
                 case AppConstants.MSG_MOVE_DONE:
                     runOnUiThread(() -> LocalBroadcastManager.getInstance(this)
@@ -569,6 +571,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
     }
 
     private void startBluetoothConnection() {
+        if (bluetoothRobotManager.isConnected()) return;
         String mac = identityRepository.getHcMac();
         if (mac != null) bluetoothRobotManager.connect(this, mac);
         else showBluetoothDeviceSelector();
@@ -637,6 +640,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private void doExit() {
         KioskModeManager.exit(this);
+        TtsHelper.getInstance().shutdown();
         bluetoothRobotManager.disconnect();
         stopService(new Intent(this, RobotNetworkService.class));
         finish();

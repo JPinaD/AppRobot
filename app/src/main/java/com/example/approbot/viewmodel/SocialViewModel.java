@@ -1,5 +1,7 @@
 package com.example.approbot.viewmodel;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.lifecycle.LiveData;
@@ -24,16 +26,20 @@ import java.util.List;
  * ViewModel para la actividad de Escenarios Sociales.
  *
  * Feedback para actividades con casillas:
- * - Acierto: MOVE_TIMED FORWARD (avanza casilla). Sin CELEBRATE.
+ * - Acierto: MOVE_TIMED FORWARD (avanza casilla).
  * - Último acierto: MOVE_TIMED FORWARD + esperar MOVE_DONE + DANCE (celebración de final).
- * - Fallo: DENY (oscilación servo, sin movimiento) + muestra respuesta correcta.
+ * - Fallo: feedback visual suave en pantalla (sin movimiento del robot).
+ *   Muestra mensaje de ánimo + respuesta correcta, avanza tras 4s.
  */
 public class SocialViewModel extends ViewModel implements ActivityStatusProvider {
 
     private static final String TAG = "SocialViewModel";
     private static final int TOTAL_SQUARES = 5;
 
-    public enum State { SHOWING, CORRECT_ADVANCING, WRONG, COMPLETING, DANCING, COMPLETED }
+    /** Duración total del feedback de fallo antes de avanzar al siguiente escenario (ms). */
+    private static final long WRONG_ADVANCE_DELAY_MS = 4000;
+
+    public enum State { SHOWING, CORRECT_ADVANCING, WRONG_SHOWING, COMPLETING, DANCING, COMPLETED }
 
     public static class UiState {
         public final State state;
@@ -63,6 +69,8 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     private SocialScenarioContent currentScenario;
     private int currentSquare = 0; // número de aciertos (casillas avanzadas)
 
+    private final Handler wrongHandler = new Handler(Looper.getMainLooper());
+
     public void init(TcpServer tcpServer, BluetoothRobotManager btManager,
                      String sessionId, List<SocialScenarioContent> scenarios) {
         this.tcpServer = tcpServer;
@@ -79,9 +87,9 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
 
     /**
      * Alumno selecciona una opción.
-     * - Acierto: envía MOVE_TIMED FORWARD directamente (sin CELEBRATE).
+     * - Acierto: envía MOVE_TIMED FORWARD directamente.
      *   Si es la última casilla, pasa a COMPLETING (espera MOVE_DONE para DANCE).
-     * - Fallo: envía DENY, transiciona a WRONG.
+     * - Fallo: NO envía DENY. Muestra feedback visual suave durante 4s y avanza.
      */
     public void onOptionSelected(String option) {
         if (currentScenario == null) return;
@@ -96,22 +104,22 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
 
             if (currentSquare >= TOTAL_SQUARES) {
                 // Última casilla: avanzar y luego DANCE
-                sendMoveTimed("FORWARD", 600);
+                sendMoveTimed("FORWARD", 800);
                 uiState.postValue(new UiState(State.COMPLETING, currentScenario,
                         selectedOutcome, null, currentSquare));
             } else {
                 // Casilla normal: solo avanzar
-                sendMoveTimed("FORWARD", 600);
+                sendMoveTimed("FORWARD", 800);
                 uiState.postValue(new UiState(State.CORRECT_ADVANCING, currentScenario,
                         selectedOutcome, null, currentSquare));
             }
         } else {
-            // Fallo: DENY
-            sendDeny();
+            // Fallo: feedback visual suave sin DENY
             String correctOptionText = "A".equals(currentScenario.correctOption)
                     ? currentScenario.optionA : currentScenario.optionB;
-            uiState.postValue(new UiState(State.WRONG, currentScenario,
+            uiState.postValue(new UiState(State.WRONG_SHOWING, currentScenario,
                     selectedOutcome, correctOptionText, currentSquare));
+            scheduleWrongAdvance();
         }
     }
 
@@ -146,16 +154,6 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     }
 
     /**
-     * Llamado cuando se recibe DENY_DONE del Arduino.
-     * Carga un nuevo escenario sin avanzar casilla.
-     */
-    public void onDenyDone() {
-        UiState current = uiState.getValue();
-        if (current == null || current.state != State.WRONG) return;
-        pickNextScenario();
-    }
-
-    /**
      * Fallback: si no llega MOVE_DONE/DANCE_DONE a tiempo (BT inestable),
      * la Activity llama este método para forzar avance.
      */
@@ -170,10 +168,29 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
     }
 
     /**
-     * Fallback: si no llega DENY_DONE, forzar retry.
+     * Fallback: if the wrong feedback timer somehow doesn't fire,
+     * the Activity can force a retry.
      */
     public void retryAfterWrong() {
+        wrongHandler.removeCallbacksAndMessages(null);
         pickNextScenario();
+    }
+
+    @Override
+    protected void onCleared() {
+        super.onCleared();
+        wrongHandler.removeCallbacksAndMessages(null);
+    }
+
+    // --- Private ---
+
+    /**
+     * Schedules auto-advance after a wrong answer.
+     * After 4s of visual feedback, loads the next scenario.
+     */
+    private void scheduleWrongAdvance() {
+        wrongHandler.removeCallbacksAndMessages(null);
+        wrongHandler.postDelayed(this::pickNextScenario, WRONG_ADVANCE_DELAY_MS);
     }
 
     private void pickNextScenario() {
@@ -210,11 +227,6 @@ public class SocialViewModel extends ViewModel implements ActivityStatusProvider
         if (btManager == null) return;
         btManager.send(new RobotMessage(AppConstants.MSG_MOVE_TIMED,
                 "{\"dir\":\"" + dir + "\",\"ms\":" + ms + "}"));
-    }
-
-    private void sendDeny() {
-        if (btManager == null) return;
-        btManager.send(new RobotMessage(AppConstants.MSG_DENY, null));
     }
 
     private void sendDance() {
