@@ -33,6 +33,9 @@
             android:name=".ui.pictogram.PictogramActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.communicator.CommunicatorActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.sessionend.SessionEndActivity"
             android:exported="false" />
         <activity

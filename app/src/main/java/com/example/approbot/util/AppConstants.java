@@ -20,13 +20,28 @@ public class AppConstants {
     public static final String MSG_SERVO_COMMAND      = "SERVO_COMMAND";
 
     // IDs de actividades
+    public static final String ACTIVITY_COMMUNICATOR     = "activity_communicator";
+    /** @deprecated Reemplazado por ACTIVITY_COMMUNICATOR. Se mantiene como alias de routing. */
+    @Deprecated
     public static final String ACTIVITY_PICTOGRAM        = "activity_pictogram";
+    /** @deprecated Reemplazado por ACTIVITY_COMMUNICATOR. Se mantiene como alias de routing. */
+    @Deprecated
     public static final String ACTIVITY_PICTOGRAM_LEGACY = "pictogram_v1";
     public static final String ACTIVITY_EMOTION          = "activity_emotion";
     public static final String ACTIVITY_SOCIAL           = "activity_social";
     public static final String ACTIVITY_SEQUENCE         = "activity_sequence";
     public static final String ACTIVITY_CALM             = "activity_calm";
     public static final String ACTIVITY_TURNS            = "activity_turns";
+
+    // Comunicador bidireccional (TCP)
+    public static final String MSG_COMMUNICATOR_SEQUENCE       = "COMMUNICATOR_SEQUENCE";
+    public static final String MSG_COMMUNICATOR_RESPONSE       = "COMMUNICATOR_RESPONSE";
+    public static final String MSG_TERAPEUTA_PICTOGRAM_MESSAGE = "TERAPEUTA_PICTOGRAM_MESSAGE";
+    public static final String MSG_STUDENT_PICTOGRAM_RESPONSE  = "STUDENT_PICTOGRAM_RESPONSE";
+
+    // Broadcasts locales para comunicador
+    public static final String ACTION_TERAPEUTA_PICTOGRAM    = "com.example.approbot.ACTION_TERAPEUTA_PICTOGRAM";
+    public static final String ACTION_COMMUNICATOR_RESPONSE  = "com.example.approbot.ACTION_COMMUNICATOR_RESPONSE";
 
     // Sesiones
     public static final String MSG_SESSION_START  = "SESSION_START";

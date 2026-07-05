@@ -38,6 +38,7 @@ import com.example.approbot.ui.activities.SequenceActivity;
 import com.example.approbot.ui.activities.SocialActivity;
 import com.example.approbot.ui.activities.TurnsActivity;
 import com.example.approbot.kiosk.KioskModeManager;
+import com.example.approbot.ui.communicator.CommunicatorActivity;
 import com.example.approbot.ui.pictogram.PictogramActivity;
 import com.example.approbot.util.AppConstants;
 import com.example.approbot.util.TtsHelper;
@@ -218,6 +219,12 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 case AppConstants.MSG_TURN_SIGNAL:
                     handleTurnSignal(payloadStr);
                     break;
+                case AppConstants.MSG_TERAPEUTA_PICTOGRAM_MESSAGE:
+                    handleTerapeutaPictogramMessage(payloadStr);
+                    break;
+                case AppConstants.MSG_COMMUNICATOR_RESPONSE:
+                    handleCommunicatorResponse(payloadStr);
+                    break;
                 default:
                     Log.d(TAG, "Mensaje no manejado: " + type);
             }
@@ -262,6 +269,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private boolean isKnownActivity(String activityId) {
         switch (activityId) {
+            case AppConstants.ACTIVITY_COMMUNICATOR:
             case AppConstants.ACTIVITY_PICTOGRAM:
             case AppConstants.ACTIVITY_PICTOGRAM_LEGACY:
             case AppConstants.ACTIVITY_EMOTION:
@@ -280,12 +288,12 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
                 ? studentProfileToJson(config.studentProfile) : null;
 
         switch (activityId) {
+            case AppConstants.ACTIVITY_COMMUNICATOR:
             case AppConstants.ACTIVITY_PICTOGRAM:
             case AppConstants.ACTIVITY_PICTOGRAM_LEGACY: {
-                ArrayList<String> pictogramList = new ArrayList<>(config.pictograms);
-                Intent intent = new Intent(this, PictogramActivity.class);
-                intent.putStringArrayListExtra(PictogramActivity.EXTRA_PICTOGRAMS, pictogramList);
-                if (profileJson != null) intent.putExtra(PictogramActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                Intent intent = new Intent(this, CommunicatorActivity.class);
+                intent.putExtra(CommunicatorActivity.EXTRA_SESSION_ID, config.sessionId);
+                if (profileJson != null) intent.putExtra(CommunicatorActivity.EXTRA_STUDENT_PROFILE, profileJson);
                 return intent;
             }
             case AppConstants.ACTIVITY_EMOTION: {
@@ -334,6 +342,24 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
         Intent broadcast = new Intent(AppConstants.ACTION_TURN_SIGNAL);
         broadcast.putExtra("payload", payloadStr);
         LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
+    }
+
+    private void handleTerapeutaPictogramMessage(String payloadStr) {
+        if (payloadStr == null) return;
+        runOnUiThread(() -> {
+            Intent broadcast = new Intent(AppConstants.ACTION_TERAPEUTA_PICTOGRAM);
+            broadcast.putExtra("payload", payloadStr);
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
+        });
+    }
+
+    private void handleCommunicatorResponse(String payloadStr) {
+        if (payloadStr == null) return;
+        runOnUiThread(() -> {
+            Intent broadcast = new Intent(AppConstants.ACTION_COMMUNICATOR_RESPONSE);
+            broadcast.putExtra("payload", payloadStr);
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
+        });
     }
 
     private void handleSessionEnd(String payloadStr, java.io.PrintWriter out) {
@@ -415,9 +441,10 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             JSONObject profileObj = payload.optJSONObject("studentProfile");
             final String profileJson = profileObj != null ? profileObj.toString() : null;
             runOnUiThread(() -> {
-                Intent intent = new Intent(this, PictogramActivity.class);
-                intent.putStringArrayListExtra(PictogramActivity.EXTRA_PICTOGRAMS, list);
-                if (profileJson != null) intent.putExtra(PictogramActivity.EXTRA_STUDENT_PROFILE, profileJson);
+                // Legacy ACTIVITY_START: redirect to CommunicatorActivity
+                Intent intent = new Intent(this, CommunicatorActivity.class);
+                intent.putExtra(CommunicatorActivity.EXTRA_SESSION_ID, "");
+                if (profileJson != null) intent.putExtra(CommunicatorActivity.EXTRA_STUDENT_PROFILE, profileJson);
                 startActivity(intent);
             });
         } catch (JSONException e) {
