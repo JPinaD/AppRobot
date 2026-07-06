@@ -149,6 +149,8 @@ public class SocialActivity extends AppCompatActivity {
                     root.setBackgroundColor(COLOR_NEUTRAL);
                     tvDescription.setText(state.scenario.description);
                     btnOptionA.setText(state.scenario.optionA);
+                    // Reproducir escenario por TTS para alumnos con apoyo auditivo
+                    TtsHelper.getInstance().speak(state.scenario.description);
                     btnOptionB.setText(state.scenario.optionB);
                     btnOptionA.setVisibility(android.view.View.VISIBLE);
                     btnOptionB.setVisibility(android.view.View.VISIBLE);
