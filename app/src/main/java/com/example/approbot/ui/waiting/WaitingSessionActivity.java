@@ -328,7 +328,7 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
             case AppConstants.ACTIVITY_TURNS: {
                 Intent intent = new Intent(this, TurnsActivity.class);
                 intent.putExtra(TurnsActivity.EXTRA_SESSION_ID, config.sessionId);
-                intent.putStringArrayListExtra(TurnsActivity.EXTRA_ITEMS, new ArrayList<>(config.activityItems));
+                intent.putExtra(TurnsActivity.EXTRA_STEPS, config.sequenceLength > 0 ? config.sequenceLength : 5);
                 if (profileJson != null) intent.putExtra(TurnsActivity.EXTRA_STUDENT_PROFILE, profileJson);
                 return intent;
             }
@@ -339,9 +339,11 @@ public class WaitingSessionActivity extends AppCompatActivity implements Bluetoo
 
     private void handleTurnSignal(String payloadStr) {
         if (payloadStr == null) return;
-        Intent broadcast = new Intent(AppConstants.ACTION_TURN_SIGNAL);
-        broadcast.putExtra("payload", payloadStr);
-        LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
+        runOnUiThread(() -> {
+            Intent broadcast = new Intent(AppConstants.ACTION_TURN_SIGNAL);
+            broadcast.putExtra("payload", payloadStr);
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
+        });
     }
 
     private void handleTerapeutaPictogramMessage(String payloadStr) {

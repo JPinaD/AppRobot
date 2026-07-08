@@ -55,4 +55,5 @@
     <string name="turns_my_turn">¡Mi turno!</string>
     <string name="turns_wait">Espera tu turno</string>
     <string name="turns_done_button">Pasar turno</string>
+    <string name="turns_waiting_partner">Esperando a tu compañero…</string>
 </resources>

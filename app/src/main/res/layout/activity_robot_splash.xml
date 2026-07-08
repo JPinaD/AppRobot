@@ -8,11 +8,20 @@
     android:padding="32dp"
     android:id="@+id/main">
 
+    <ImageView
+        android:layout_width="180dp"
+        android:layout_height="180dp"
+        android:src="@drawable/app_logo"
+        android:contentDescription="Logo de Emotiko"
+        android:layout_marginBottom="16dp" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="🤖"
-        android:textSize="72sp"
+        android:text="Emotiko"
+        android:textSize="36sp"
+        android:textStyle="bold"
+        android:textColor="@color/tea_text_primary"
         android:gravity="center"
         android:layout_marginBottom="24dp" />
 
